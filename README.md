@@ -1,4 +1,4 @@
-# Homelab Visualizer
+# Rackmap
 
 A local, read-only browser map for a YAML-described homelab. YAML is the
 source of truth: the app does not edit configuration, discover infrastructure,
@@ -40,6 +40,12 @@ mise exec -- bun test
 
 See [configuration authoring](docs/configuration.md) for the YAML contract and
 [`examples/homelab.yaml`](examples/homelab.yaml) for a split configuration.
+
+## GitHub Pages
+
+Pushes to `main` deploy the static client to GitHub Pages. In the repository's
+**Settings → Pages**, select **GitHub Actions** as the build source. The
+published site is available at `https://jackcuthbert.github.io/rackmap/`.
 
 ## Manual acceptance
 
