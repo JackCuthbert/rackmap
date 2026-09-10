@@ -1,0 +1,10 @@
+version: 1
+site:
+  id: home
+  name: Home Lab
+  description: A small example configuration. Do not put secrets in YAML.
+imports:
+  - hardware.yaml
+  - network.yaml
+  - compute.yaml
+  - applications.yaml

@@ -1,0 +1,14 @@
+networkDevices:
+  - id: router
+    name: Edge router
+    kind: router
+    group: office-rack
+    hostname: router.home.example
+    addresses: [{ address: 192.0.2.1 }]
+  - id: switch
+    name: Managed switch
+    kind: switch
+    group: office-rack
+    upstream: router
+    hostname: switch.home.example
+    addresses: [{ address: 192.0.2.2 }]
