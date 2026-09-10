@@ -5,15 +5,12 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import ELK from 'elkjs/lib/elk.bundled.js'
-import type { ElkNode } from 'elkjs/lib/elk-api'
 import {
   Background,
   BaseEdge,
   Controls,
   EdgeLabelRenderer,
   Handle,
-  MarkerType,
   Position,
   ReactFlow,
   useUpdateNodeInternals,
@@ -26,10 +23,13 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 
-import type { HomelabEntity, HomelabModel } from '../domain/types'
+import type {
+  HomelabEntity,
+  HomelabModel,
+  RelationshipEdge,
+} from '../domain/types'
 import { exampleYaml } from './example-yaml'
 import {
-  bands,
   assignEdgeHandles,
   buildUnifiedGraph,
   edgeRoutePath,
@@ -38,15 +38,29 @@ import {
   type EdgeRoutePlan,
   type NodeHandle,
   type NodeMetadata,
-  type UnifiedGraphNode,
 } from './graph'
-import { bandLayoutOptions } from './layout'
 import { loadYaml } from './load-yaml'
+import { layoutPrimaryTopology } from './topology-layout'
 
-const elk = new ELK()
 const nodeWidth = 216
 const baseNodeHeight = 100
-const laneGap = 72
+
+function relationshipLabel(
+  edge: Pick<RelationshipEdge, 'type' | 'kind' | 'label'>,
+) {
+  if (edge.kind === 'poe') return 'PoE'
+  if (edge.label) return edge.label
+  return (
+    {
+      'runs-on': 'Runs On',
+      'connected-to': 'Connected To',
+      'network-upstream': 'Upstream',
+      contains: 'Contains',
+      'physical-connection': edge.kind === 'power' ? 'Power' : 'USB',
+      'depends-on': 'Depends On',
+    } satisfies Record<RelationshipEdge['type'], string>
+  )[edge.type]
+}
 
 function BandNode({ data }: NodeProps) {
   return <div className="band-label">{String(data['label'])}</div>
@@ -69,12 +83,12 @@ function EntityNode({ data }: NodeProps) {
     <>
       {handles.map((handle) => {
         const sameSide = handles
-          .filter((candidate) => candidate.side === handle.side)
-          .toSorted((left, right) => left.id.localeCompare(right.id))
-        const index = sameSide.findIndex(
-          (candidate) => candidate.id === handle.id,
-        )
-        const offset = `${((index + 1) / (sameSide.length + 1)) * 100}%`
+          .filter(
+            (candidate) =>
+              candidate.side === handle.side && candidate.type === handle.type,
+          )
+          .toSorted((left, right) => left.offset - right.offset)
+        const offset = `${((handle.offset + 1) / (sameSide.length + 1)) * 100}%`
         const style =
           handle.side === 'top' || handle.side === 'bottom'
             ? { left: offset }
@@ -113,7 +127,6 @@ function RoutedEdge({
   targetX,
   targetY,
   label,
-  markerEnd,
   style,
   data,
 }: EdgeProps) {
@@ -125,12 +138,7 @@ function RoutedEdge({
 
   return (
     <>
-      <BaseEdge
-        id={id}
-        path={route.path}
-        {...(markerEnd && { markerEnd })}
-        {...(style && { style })}
-      />
+      <BaseEdge id={id} path={route.path} {...(style && { style })} />
       {typeof label === 'string' && (
         <EdgeLabelRenderer>
           <div
@@ -213,67 +221,6 @@ function cardHeight(entity: HomelabEntity, metadata: NodeMetadata[]) {
       entity.entityKind === 'virtualMachine') &&
     entity.addresses?.some((address) => address.vlanId !== undefined)
   return baseNodeHeight + metadata.length * 18 + (hasVlan ? 18 : 0)
-}
-
-function hostId(entity: HomelabEntity, entities: HomelabModel['entities']) {
-  const visited = new Set<string>()
-  let current: HomelabEntity | undefined = entity
-
-  while (current && !visited.has(current.id)) {
-    visited.add(current.id)
-    if (current.entityKind === 'hardware') return current.id
-    if (
-      current.entityKind !== 'virtualMachine' &&
-      current.entityKind !== 'application'
-    )
-      break
-    current = entities[current.runsOn]
-  }
-
-  return entity.id
-}
-
-function hostLaneLayout(
-  members: UnifiedGraphNode[],
-  model: HomelabModel,
-): ElkNode {
-  const laneIds = model.entityIdsByKind.hardware.slice()
-  const laneIndex = new Map(laneIds.map((id, index) => [id, index]))
-  const membersByLane = new Map<string, UnifiedGraphNode[]>()
-
-  for (const member of members) {
-    const lane = hostId(member.entity, model.entities)
-    if (!laneIndex.has(lane)) {
-      laneIndex.set(lane, laneIds.length)
-      laneIds.push(lane)
-    }
-    membersByLane.set(lane, [...(membersByLane.get(lane) ?? []), member])
-  }
-
-  const children: ElkNode[] = []
-  let contentHeight = 0
-  for (const lane of laneIds) {
-    let y = 0
-    for (const member of membersByLane.get(lane) ?? []) {
-      const height = cardHeight(member.entity, member.metadata)
-      children.push({
-        id: member.id,
-        x: 64 + laneIndex.get(lane)! * (nodeWidth + laneGap),
-        y,
-        width: nodeWidth,
-        height,
-      })
-      y += height + 32
-    }
-    contentHeight = Math.max(contentHeight, y)
-  }
-
-  return {
-    id: 'host-lanes',
-    width: Math.max(720, laneIds.length * (nodeWidth + laneGap) + 56),
-    height: Math.max(60, contentHeight - 32),
-    children,
-  }
 }
 
 function facts(entity: HomelabEntity) {
@@ -418,23 +365,33 @@ export function App() {
       const targetY = targetNode.position.y
       const sameBand = source.band === target.band
       const sameBandVertical = edge.type === 'network-upstream'
+      const isLocationMembership =
+        edge.type === 'contains' &&
+        source.entity.entityKind !== 'group' &&
+        target.entity.entityKind === 'group'
       const pairKey = [edge.source, edge.target].sort().join('\0')
       const pairIndex = sameBandIndexes.get(pairKey) ?? 0
       sameBandIndexes.set(pairKey, pairIndex + 1)
       const pairCount = sameBandCounts.get(pairKey) ?? 1
       const sameBandOffset = (pairIndex - (pairCount - 1) / 2) * 18
-      let plan = planEdgeRoute({
-        sourceBand: source.band,
-        targetBand: target.band,
-        sourceX,
-        targetX,
-        sourceY,
-        targetY,
-        minX,
-        maxX,
-        ...(sameBand && { parallelOffset: sameBandOffset }),
-        ...(sameBandVertical && { sameBandVertical }),
-      })
+      let plan = isLocationMembership
+        ? {
+            mode: 'vertical' as const,
+            sourceHandle: 'top' as const,
+            targetHandle: 'bottom' as const,
+          }
+        : planEdgeRoute({
+            sourceBand: source.band,
+            targetBand: target.band,
+            sourceX,
+            targetX,
+            sourceY,
+            targetY,
+            minX,
+            maxX,
+            ...(sameBand && { parallelOffset: sameBandOffset }),
+            ...(sameBandVertical && { sameBandVertical }),
+          })
       if (plan.mode === 'gutter') {
         const gutterSide = plan.sourceHandle === 'left' ? 'left' : 'right'
         const parallelOffset = gutterOffsets[gutterSide]
@@ -452,42 +409,58 @@ export function App() {
         })
       }
 
-      return [{ edge, plan }]
+      return [{ edge, plan, sourceX, targetX, isLocationMembership, target }]
     })
     const handles = assignEdgeHandles(
-      plannedEdges.map(({ edge, plan }) => ({
+      plannedEdges.map(({ edge, plan, sourceX, targetX }) => ({
         id: edge.id,
         source: edge.source,
         target: edge.target,
         sourceSide: plan.sourceHandle,
         targetSide: plan.targetHandle,
+        sourceOrder: targetX,
+        targetOrder: sourceX,
       })),
     )
-    const edges = plannedEdges.map(({ edge, plan }) => {
-      const assignment = handles.byEdge.get(edge.id)!
-      const rendered: Edge = {
-        id: edge.id,
-        source: edge.source,
-        target: edge.target,
-        sourceHandle: assignment.sourceHandle,
-        targetHandle: assignment.targetHandle,
-        type: 'routed',
-        data: { plan },
-        label: edge.showLabel ? (edge.label ?? edge.type) : undefined,
-        className: edge.dimmed ? 'dimmed' : selectedId ? 'highlighted' : '',
-      }
-      if (edge.type === 'physical-connection') {
-        rendered.style =
-          edge.kind === 'power'
-            ? { stroke: '#df7954', strokeDasharray: '8 3', strokeWidth: 2 }
-            : { stroke: '#d6ad63', strokeDasharray: '3 4' }
-      } else {
-        rendered.markerEnd = { type: MarkerType.ArrowClosed }
-        if (edge.groupColor)
-          rendered.style = { stroke: edge.groupColor, strokeWidth: 3 }
-      }
-      return rendered
-    })
+    const edges = plannedEdges.map(
+      ({ edge, plan, isLocationMembership, target }) => {
+        const assignment = handles.byEdge.get(edge.id)!
+        const rendered: Edge = {
+          id: edge.id,
+          source: edge.source,
+          target: edge.target,
+          sourceHandle: assignment.sourceHandle,
+          targetHandle: assignment.targetHandle,
+          type: 'routed',
+          data: { plan },
+          label: edge.showLabel ? relationshipLabel(edge) : undefined,
+          className: `${edge.dimmed ? 'dimmed ' : ''}${
+            isLocationMembership
+              ? 'location-membership'
+              : selectedId
+                ? 'highlighted'
+                : ''
+          }`,
+        }
+        if (isLocationMembership) {
+          rendered.style = {
+            stroke:
+              edge.groupColor ?? target.groupHighlight?.color ?? '#91a4b2',
+            strokeDasharray: '5 5',
+            strokeWidth: 2,
+          }
+        } else if (edge.type === 'physical-connection') {
+          rendered.style =
+            edge.kind === 'power' || edge.kind === 'poe'
+              ? { stroke: '#d6ad63', strokeDasharray: '8 3', strokeWidth: 2 }
+              : { stroke: '#71818e', strokeDasharray: '3 4' }
+        } else {
+          if (edge.groupColor)
+            rendered.style = { stroke: edge.groupColor, strokeWidth: 3 }
+        }
+        return rendered
+      },
+    )
     return { edges, handles }
   }, [graph, nodes, selectedId])
   const displayedNodes = useMemo(() => {
@@ -503,7 +476,9 @@ export function App() {
               groupHighlight: byId.get(node.id)?.groupHighlight,
             },
             selected: node.id === selectedId,
-            className: `entity-node${byId.get(node.id)?.dimmed ? ' dimmed' : ''}`,
+            className: `entity-node entity-${byId.get(node.id)?.band.toLowerCase()}${
+              byId.get(node.id)?.dimmed ? ' dimmed' : ''
+            }`,
           },
     )
   }, [graph, nodes, routed.handles, selectedId])
@@ -518,99 +493,67 @@ export function App() {
     let cancelled = false
     const baseGraph = buildUnifiedGraph(model)
     setLayoutError('')
-    void Promise.all(
-      bands.map(async (band) => {
-        const members = baseGraph.nodes.filter((node) => node.band === band)
-        if (
-          band === 'Hardware' ||
-          band === 'Virtualisation' ||
-          band === 'Applications'
-        )
-          return { band, members, layout: hostLaneLayout(members, model) }
-
-        const memberIds = new Set(members.map((node) => node.id))
-        const layout: ElkNode = await elk.layout({
-          id: band,
-          layoutOptions: bandLayoutOptions,
-          children: members.map((node) => ({
-            id: node.id,
-            width: nodeWidth,
-            height: cardHeight(node.entity, node.metadata),
-          })),
-          // Layout follows the hierarchy; displayed arrows retain dependency direction.
-          edges: baseGraph.edges
-            .filter(
-              (edge) =>
-                memberIds.has(edge.source) && memberIds.has(edge.target),
-            )
-            .map((edge) => ({
-              id: edge.id,
-              sources: [edge.target],
-              targets: [edge.source],
-            })),
-        })
-        return { band, members, layout }
-      }),
-    )
-      .then((layouts) => {
-        if (cancelled) return
-        const width = Math.max(
-          720,
-          ...layouts.map(({ layout }) => (layout.width ?? 0) + 64),
-        )
-        let top = 0
+    try {
+      const layout = layoutPrimaryTopology(baseGraph, {
+        nodeWidth,
+        cardHeight: (node) => cardHeight(node.entity, node.metadata),
+      })
+      if (!cancelled) {
+        const positions = new Map(layout.nodes.map((node) => [node.id, node]))
         const nextNodes: Node[] = []
-        for (const { band, members, layout } of layouts) {
-          const height = Math.max(180, (layout.height ?? 0) + 92)
+        for (const frame of layout.frames) {
           nextNodes.push({
-            id: `band:${band}`,
+            id: frame.id,
             type: 'band',
-            data: { label: `${band} / ${members.length}` },
-            position: { x: 0, y: top },
-            style: { width, height },
-            className: `layer-band band-${band.toLowerCase()}`,
+            data: {
+              label: `${frame.band} / ${
+                baseGraph.nodes.filter((node) => node.band === frame.band)
+                  .length
+              }`,
+            },
+            position: { x: frame.x, y: frame.y },
+            style: {
+              width: frame.width,
+              height: frame.height,
+            },
+            className: `layer-band band-${frame.band.toLowerCase()}`,
             draggable: false,
             selectable: false,
             focusable: false,
             connectable: false,
             zIndex: -1,
           })
-          const positions = new Map(
-            layout.children?.map((node) => [node.id, node]),
-          )
-          for (const { id, entity, metadata } of members) {
-            const position = positions.get(id)
-            nextNodes.push({
-              id,
-              type: 'entity',
-              ariaLabel: `${entity.name}, ${entityType(entity)}, ${id}`,
-              data: {
-                label: (
-                  <div className="entity-label">
-                    <span className="entity-type">{entityType(entity)}</span>
-                    <strong title={entity.name}>{entity.name}</strong>
+        }
+        for (const { id, entity, metadata } of baseGraph.nodes) {
+          const position = positions.get(id)
+          nextNodes.push({
+            id,
+            type: 'entity',
+            ariaLabel: `${entity.name}, ${entityType(entity)}, ${id}`,
+            data: {
+              label: (
+                <div className="entity-label">
+                  <span className="entity-type">{entityType(entity)}</span>
+                  <strong title={entity.name}>{entity.name}</strong>
+                  {entity.entityKind !== 'group' && (
                     <code title={id}>{id}</code>
-                    <VlanLabel entity={entity} />
-                    <NodeMetadataRows metadata={metadata} />
-                  </div>
-                ),
-              },
-              position: {
-                x: (position?.x ?? 0) + (width - (layout.width ?? 0)) / 2,
-                y: top + 54 + (position?.y ?? 0),
-              },
-              style: { width: nodeWidth, height: cardHeight(entity, metadata) },
-            })
-          }
-          top += height + 12
+                  )}
+                  <VlanLabel entity={entity} />
+                  <NodeMetadataRows metadata={metadata} />
+                </div>
+              ),
+            },
+            position: { x: position?.x ?? 0, y: position?.y ?? 0 },
+            style: { width: nodeWidth, height: cardHeight(entity, metadata) },
+          })
         }
         setNodes(nextNodes)
         setLayoutReady((value) => value + 1)
-      })
-      .catch(() => {
-        if (!cancelled)
-          setLayoutError('Could not arrange the map. Try Auto-layout again.')
-      })
+      }
+    } catch {
+      if (!cancelled)
+        setLayoutError('Could not arrange the map. Try Auto-layout again.')
+    }
     return () => {
       cancelled = true
     }
@@ -643,6 +586,14 @@ export function App() {
   return (
     <main className="app">
       <header className="app-header">
+        <button
+          className="quiet-button"
+          onClick={() => setSourceOpen((open) => !open)}
+          aria-expanded={sourceOpen}
+          aria-controls="yaml-source"
+        >
+          {sourceOpen ? 'Hide source' : 'Source'}
+        </button>
         <div className="site-heading">
           <span className="eyebrow">Rackmap</span>
           <h1>{model?.site.name ?? 'Rackmap'}</h1>
@@ -683,14 +634,25 @@ export function App() {
             </section>
           )}
         </div>
-        <button
-          className="quiet-button"
-          onClick={() => setSourceOpen((open) => !open)}
-          aria-expanded={sourceOpen}
-          aria-controls="yaml-source"
-        >
-          {sourceOpen ? 'Hide source' : 'Source'}
-        </button>
+        <div className="toolbar-actions">
+          {selected && (
+            <button onClick={() => setSelectedId(undefined)}>
+              Clear selection
+            </button>
+          )}
+          <button
+            onClick={() => setLayoutRevision((value) => value + 1)}
+            disabled={!model}
+          >
+            Auto-layout
+          </button>
+          <button
+            onClick={() => void flow?.fitView({ padding: 0.08 })}
+            disabled={!model}
+          >
+            Fit map
+          </button>
+        </div>
       </header>
       {(error || layoutError) && (
         <div className="diagnostics" role="alert">
@@ -761,35 +723,11 @@ export function App() {
           </aside>
         )}
         <section className="canvas" aria-label="Unified infrastructure map">
-          <div className="canvas-toolbar">
-            <div>
-              <h2>Topology</h2>
-              <span className="muted">
-                {entities.length} entities · {graph?.edges.length ?? 0}{' '}
-                connections
-              </span>
-            </div>
-            <div className="toolbar-actions">
-              {selected && (
-                <button onClick={() => setSelectedId(undefined)}>
-                  Clear selection
-                </button>
-              )}
-              <button
-                onClick={() => setLayoutRevision((value) => value + 1)}
-                disabled={!model}
-              >
-                Auto-layout
-              </button>
-              <button
-                onClick={() => void flow?.fitView({ padding: 0.08 })}
-                disabled={!model}
-              >
-                Fit map
-              </button>
-            </div>
-          </div>
           <div className="map-frame">
+            <div className="topology-summary">
+              Topology {entities.length} entities · {graph?.edges.length ?? 0}{' '}
+              connections
+            </div>
             <ReactFlow
               className="flow"
               nodes={displayedNodes}
@@ -829,14 +767,6 @@ export function App() {
               </div>
             )}
           </div>
-          <footer className="map-footer">
-            <span>
-              <span className="line-key">→</span> Dependency & placement
-            </span>
-            <span className="map-hint">
-              Drag to arrange · Auto-layout resets positions
-            </span>
-          </footer>
         </section>
         {selected && (
           <aside className="details" aria-label="Entity details">
@@ -937,7 +867,7 @@ export function App() {
                                   <small>{id}</small>
                                 </span>
                                 <span className="relationship-type">
-                                  {edge.label ?? edge.type}
+                                  {relationshipLabel(edge)}
                                 </span>
                               </button>
                             )

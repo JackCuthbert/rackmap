@@ -157,10 +157,12 @@ its hardware or VM node; it does not create a VLAN or port node. Hardware and
 VMs do not require an address entry, so storage and UPS equipment can be
 modelled without a network-device connection.
 
-Hardware can also declare an undirected physical `usb` or `power` connection
-to other hardware. Links cannot target the declaring item or duplicate the
-same kind for a hardware pair; USB and power may coexist for the same pair.
-They are hidden until either endpoint is selected:
+Hardware and network devices can declare `connections`. `usb` is an
+undirected hardware-to-hardware link; `power` and `poe` are directional from
+provider to consumer. Power may target hardware or network equipment; a PoE
+provider must be a network device. Links cannot target the declaring item or
+duplicate the same provider, consumer, and kind. They are hidden until either
+endpoint is selected:
 
 ```yaml
 hardware:
@@ -174,6 +176,15 @@ hardware:
       - target: server-one
         kind: power
         label: UPS power
+      - target: router
+        kind: power
+networkDevices:
+  - id: switch
+    name: Switch
+    kind: switch
+    connections:
+      - target: access-point
+        kind: poe
 ```
 
 Directed arrows point from a dependent workload or connected item to its

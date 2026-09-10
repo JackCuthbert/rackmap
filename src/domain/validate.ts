@@ -331,10 +331,7 @@ export function validateDocuments(load: SuccessfulLoadResult): DomainResult {
         })
       }
     }
-    if (
-      entity.entityKind === 'hardware' ||
-      entity.entityKind === 'virtualMachine'
-    ) {
+    if (entity.entityKind === 'hardware') {
       const connectedDevices = new Set<string>()
       for (const [index, address] of (entity.addresses ?? []).entries()) {
         if (
@@ -357,30 +354,71 @@ export function validateDocuments(load: SuccessfulLoadResult): DomainResult {
         })
       }
     }
-    if (entity.entityKind === 'hardware') {
+    if (
+      entity.entityKind === 'hardware' ||
+      entity.entityKind === 'networkDevice'
+    ) {
       for (const [index, connection] of (entity.connections ?? []).entries()) {
         const path = `${entity.id}.connections.${index}`
         if (connection.target === entity.id) {
           diagnostics.push(
             diagnostic(
               'invalid-reference',
-              'A physical connection cannot target itself.',
+              'A connection cannot target itself.',
               file,
               path,
             ),
           )
           continue
         }
-        if (!reference(file, `${path}.target`, connection.target, 'hardware'))
+        if (
+          !reference(file, `${path}.target`, connection.target, [
+            'hardware',
+            'networkDevice',
+          ])
+        )
           continue
 
-        const pair = [entity.id, connection.target].toSorted().join(':')
+        if (
+          connection.kind === 'usb' &&
+          (entity.entityKind !== 'hardware' ||
+            registry.get(connection.target)?.entity.entityKind !== 'hardware')
+        ) {
+          diagnostics.push(
+            diagnostic(
+              'invalid-reference',
+              'USB connections must join two hardware entities.',
+              file,
+              path,
+            ),
+          )
+          continue
+        }
+        if (
+          connection.kind === 'poe' &&
+          entity.entityKind !== 'networkDevice'
+        ) {
+          diagnostics.push(
+            diagnostic(
+              'invalid-reference',
+              'A PoE provider must be a network device.',
+              file,
+              path,
+            ),
+          )
+          continue
+        }
+
+        const pair =
+          connection.kind === 'usb'
+            ? [entity.id, connection.target].toSorted().join(':')
+            : `${entity.id}:${connection.target}`
         const connectionKey = `${pair}:${connection.kind}`
         if (physicalConnectionPairs.has(connectionKey)) {
           diagnostics.push(
             diagnostic(
               'duplicate-id',
-              `Duplicate ${connection.kind} physical connection '${pair}'.`,
+              `Duplicate ${connection.kind} connection '${pair}'.`,
               file,
               path,
             ),
@@ -394,7 +432,7 @@ export function validateDocuments(load: SuccessfulLoadResult): DomainResult {
           type: 'physical-connection',
           kind: connection.kind,
           ...(connection.label && { label: connection.label }),
-          direction: 'undirected',
+          direction: connection.kind === 'usb' ? 'undirected' : 'directed',
           origin: 'declared',
         })
       }

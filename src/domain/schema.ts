@@ -24,6 +24,9 @@ const addressSchema = z.strictObject({
   vlanId: vlanId.optional(),
 })
 const connectedAddressSchema = addressSchema.extend({ networkDevice: id })
+const optionalConnectedAddressSchema = addressSchema.extend({
+  networkDevice: id.optional(),
+})
 const dnsLabel = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i
 const dnsName = z
   .string()
@@ -56,16 +59,17 @@ const equipmentShape = {
   addresses: z.array(addressSchema).optional(),
 }
 
+export const hardwareConnectionSchema = z.strictObject({
+  target: id,
+  kind: z.enum(['usb', 'power', 'poe']),
+  label: optionalText,
+})
+
 export const networkDeviceSchema = z.strictObject({
   ...equipmentShape,
   kind: z.enum(['internet', 'router', 'firewall', 'switch', 'other']),
   upstream: id.optional(),
-})
-
-export const hardwareConnectionSchema = z.strictObject({
-  target: id,
-  kind: z.enum(['usb', 'power']),
-  label: optionalText,
+  connections: z.array(hardwareConnectionSchema).optional(),
 })
 
 export const hardwareSchema = z.strictObject({
@@ -95,7 +99,7 @@ export const vmApplicationSchema = z.strictObject({
 export const virtualMachineSchema = z.strictObject({
   ...commonEntityShape,
   runsOn: id,
-  addresses: z.array(connectedAddressSchema).optional(),
+  addresses: z.array(optionalConnectedAddressSchema).optional(),
   hostname: dnsName.optional(),
   application: vmApplicationSchema.optional(),
   resources: z

@@ -51,7 +51,7 @@ export type RelationshipEdge = {
   source: string
   target: string
   type: RelationshipType
-  kind?: 'usb' | 'power'
+  kind?: 'usb' | 'power' | 'poe'
   label?: string
   direction: 'directed' | 'undirected'
   origin: 'declared' | 'derived'

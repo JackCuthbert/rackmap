@@ -213,6 +213,35 @@
           "upstream": {
             "type": "string",
             "pattern": "^[a-z][a-z0-9-]*$"
+          },
+          "connections": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "target": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9-]*$"
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "usb",
+                    "power",
+                    "poe"
+                  ]
+                },
+                "label": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "target",
+                "kind"
+              ],
+              "additionalProperties": false
+            }
           }
         },
         "required": [
@@ -365,7 +394,8 @@
                   "type": "string",
                   "enum": [
                     "usb",
-                    "power"
+                    "power",
+                    "poe"
                   ]
                 },
                 "label": {
@@ -461,9 +491,6 @@
                   "pattern": "^[a-z][a-z0-9-]*$"
                 }
               },
-              "required": [
-                "networkDevice"
-              ],
               "additionalProperties": false
             }
           },

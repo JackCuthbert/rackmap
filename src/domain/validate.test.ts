@@ -193,6 +193,31 @@ describe('direct network topology', () => {
     ).toBe(true)
   })
 
+  test('accepts VM address metadata without a direct network device', () => {
+    const result = validateDocuments(
+      loadWith(
+        topology({
+          virtualMachines: [
+            {
+              id: 'docker-vm',
+              name: 'Docker VM',
+              runsOn: 'server',
+              addresses: [{ address: '192.0.2.20', vlanId: 20 }],
+            },
+          ],
+        }),
+      ),
+    )
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(
+      result.model.relationships.some(
+        (edge) => edge.source === 'docker-vm' && edge.type === 'connected-to',
+      ),
+    ).toBe(false)
+  })
+
   test.each([
     {
       hardware: [
@@ -243,6 +268,8 @@ describe('direct network topology', () => {
               upstream: 'router',
             },
           ],
+          virtualMachines: [],
+          applications: [],
         }),
       ),
     ).toContainEqual(
@@ -355,6 +382,53 @@ describe('physical hardware connections', () => {
       expect.arrayContaining([
         expect.objectContaining({ kind: 'usb', label: 'UPS monitoring' }),
         expect.objectContaining({ kind: 'power', label: 'UPS power' }),
+      ]),
+    )
+  })
+
+  test('derives directional UPS power and network PoE connections', () => {
+    const result = validateDocuments(
+      loadWith(
+        topology({
+          hardware: [
+            {
+              id: 'ups',
+              name: 'UPS',
+              kind: 'ups',
+              connections: [{ target: 'switch', kind: 'power' }],
+            },
+          ],
+          networkDevices: [
+            { id: 'router', name: 'Router', kind: 'router' },
+            {
+              id: 'switch',
+              name: 'Switch',
+              kind: 'switch',
+              connections: [{ target: 'router', kind: 'poe' }],
+            },
+          ],
+          virtualMachines: [],
+          applications: [],
+        }),
+      ),
+    )
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.model.relationships).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: 'ups',
+          target: 'switch',
+          kind: 'power',
+          direction: 'directed',
+        }),
+        expect.objectContaining({
+          source: 'switch',
+          target: 'router',
+          kind: 'poe',
+          direction: 'directed',
+        }),
       ]),
     )
   })

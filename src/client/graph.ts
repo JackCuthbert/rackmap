@@ -33,6 +33,8 @@ export type EdgeHandleRequest = {
   target: string
   sourceSide: HandleSide
   targetSide: HandleSide
+  sourceOrder?: number
+  targetOrder?: number
 }
 
 export type NodeHandle = {
@@ -131,39 +133,57 @@ export function assignEdgeHandles(
     { sourceHandle: string; targetHandle: string }
   >()
   const byNode = new Map<string, NodeHandle[]>()
-  const counts = new Map<string, number>()
+  const requestsByHandle = new Map<
+    string,
+    { request: EdgeHandleRequest; type: 'source' | 'target'; order: number }[]
+  >()
+  const handleDetails = new Map<
+    string,
+    { nodeId: string; type: 'source' | 'target'; side: HandleSide }
+  >()
 
-  for (const request of [...requests].toSorted((left, right) =>
-    left.id.localeCompare(right.id),
-  )) {
-    const sourceKey = `${request.source}:source:${request.sourceSide}`
-    const targetKey = `${request.target}:target:${request.targetSide}`
-    const sourceIndex = counts.get(sourceKey) ?? 0
-    const targetIndex = counts.get(targetKey) ?? 0
-    const sourceHandle = `source-${request.sourceSide}-${sourceIndex}`
-    const targetHandle = `target-${request.targetSide}-${targetIndex}`
+  for (const request of requests) {
+    const sourceKey = `${request.source}\0source\0${request.sourceSide}`
+    const targetKey = `${request.target}\0target\0${request.targetSide}`
+    handleDetails.set(sourceKey, {
+      nodeId: request.source,
+      type: 'source',
+      side: request.sourceSide,
+    })
+    handleDetails.set(targetKey, {
+      nodeId: request.target,
+      type: 'target',
+      side: request.targetSide,
+    })
+    requestsByHandle.set(sourceKey, [
+      ...(requestsByHandle.get(sourceKey) ?? []),
+      { request, type: 'source', order: request.sourceOrder ?? 0 },
+    ])
+    requestsByHandle.set(targetKey, [
+      ...(requestsByHandle.get(targetKey) ?? []),
+      { request, type: 'target', order: request.targetOrder ?? 0 },
+    ])
+  }
 
-    counts.set(sourceKey, sourceIndex + 1)
-    counts.set(targetKey, targetIndex + 1)
-    byEdge.set(request.id, { sourceHandle, targetHandle })
-    byNode.set(request.source, [
-      ...(byNode.get(request.source) ?? []),
-      {
-        id: sourceHandle,
-        type: 'source',
-        side: request.sourceSide,
-        offset: sourceIndex,
-      },
-    ])
-    byNode.set(request.target, [
-      ...(byNode.get(request.target) ?? []),
-      {
-        id: targetHandle,
-        type: 'target',
-        side: request.targetSide,
-        offset: targetIndex,
-      },
-    ])
+  for (const [key, handleRequests] of requestsByHandle) {
+    const { nodeId, type, side } = handleDetails.get(key)!
+    for (const [offset, { request }] of handleRequests
+      .toSorted(
+        (left, right) =>
+          left.order - right.order ||
+          left.request.id.localeCompare(right.request.id),
+      )
+      .entries()) {
+      const id = `${type}-${side}-${offset}`
+      byEdge.set(request.id, {
+        ...(byEdge.get(request.id) ?? {}),
+        [`${type}Handle`]: id,
+      } as { sourceHandle: string; targetHandle: string })
+      byNode.set(nodeId, [
+        ...(byNode.get(nodeId) ?? []),
+        { id, type, side, offset },
+      ])
+    }
   }
 
   return { byEdge, byNode }
@@ -280,10 +300,7 @@ export function nodeMetadata(entity: HomelabEntity): NodeMetadata[] {
             {
               label: 'IP' as const,
               value: entity.addresses
-                .map(
-                  ({ address, vlanId }) =>
-                    `${address ?? '<unset>'}${vlanId ? ` · VLAN ${vlanId}` : ''}`,
-                )
+                .map(({ address }) => address ?? '<unset>')
                 .join(', '),
             },
           ]
@@ -292,34 +309,6 @@ export function nodeMetadata(entity: HomelabEntity): NodeMetadata[] {
   }
 
   return []
-}
-
-function isLayerSkipping(
-  relationship: RelationshipEdge,
-  entities: HomelabModel['entities'],
-) {
-  const source = entities[relationship.source]
-  const target = entities[relationship.target]
-  if (!source || !target) return false
-  return (
-    Math.abs(
-      bandIndexes.get(bandFor(source.entityKind))! -
-        bandIndexes.get(bandFor(target.entityKind))!,
-    ) > 1
-  )
-}
-
-function isGroupMembership(
-  relationship: RelationshipEdge,
-  entities: HomelabModel['entities'],
-) {
-  const source = entities[relationship.source]
-  const target = entities[relationship.target]
-  return (
-    relationship.type === 'contains' &&
-    source?.entityKind !== 'group' &&
-    target?.entityKind === 'group'
-  )
 }
 
 function groupHighlightFor(
@@ -354,6 +343,17 @@ function groupHighlightFor(
   return undefined
 }
 
+function isEntityLocationMembership(
+  relationship: RelationshipEdge,
+  entities: HomelabModel['entities'],
+) {
+  return (
+    relationship.type === 'contains' &&
+    entities[relationship.source]?.entityKind !== 'group' &&
+    entities[relationship.target]?.entityKind === 'group'
+  )
+}
+
 export function buildUnifiedGraph(
   model: HomelabModel,
   selectedId?: string,
@@ -376,14 +376,8 @@ export function buildUnifiedGraph(
         (selected !== undefined &&
           (relationship.source === selected ||
             relationship.target === selected))) &&
-      (!isGroupMembership(relationship, model.entities) ||
-        (selected !== undefined &&
-          (relationship.source === selected ||
-            relationship.target === selected))) &&
-      (!isLayerSkipping(relationship, model.entities) ||
-        (selected !== undefined &&
-          (relationship.source === selected ||
-            relationship.target === selected))),
+      (!isEntityLocationMembership(relationship, model.entities) ||
+        selected !== undefined),
   )
   const connectedIds = new Set<string>(selected ? [selected] : [])
   const highlightedRelationships = new Set<RelationshipEdge>()
@@ -392,8 +386,7 @@ export function buildUnifiedGraph(
     for (const relationship of relationships) {
       if (
         (relationship.type !== 'physical-connection' &&
-          !isGroupMembership(relationship, model.entities) &&
-          !isLayerSkipping(relationship, model.entities)) ||
+          relationship.type !== 'contains') ||
         (relationship.source !== selected && relationship.target !== selected)
       )
         continue

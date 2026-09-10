@@ -327,7 +327,7 @@ describe('buildUnifiedGraph', () => {
     ])
   })
 
-  test('keeps group membership contextual while showing the primary topology', () => {
+  test('shows structural containment with the primary topology', () => {
     expect(buildUnifiedGraph(model).edges.map((edge) => edge.type)).toEqual([
       'network-upstream',
       'connected-to',
@@ -336,6 +336,14 @@ describe('buildUnifiedGraph', () => {
       'runs-on',
       'depends-on',
     ])
+  })
+
+  test('shows entity location membership only when an endpoint is selected', () => {
+    expect(
+      buildUnifiedGraph(model).edges.some(
+        (edge) => edge.source === 'router' && edge.target === 'rack',
+      ),
+    ).toBe(false)
   })
 
   test('reveals group membership when the device or its group is selected', () => {
@@ -387,24 +395,11 @@ describe('buildUnifiedGraph', () => {
     ).toEqual(rack)
   })
 
-  test('hides contextual containment until one endpoint is selected', () => {
-    const defaultGraph = buildUnifiedGraph(model)
-
-    expect(
-      defaultGraph.edges.some(
-        (edge) => edge.source === 'server' && edge.target === 'rack',
-      ),
-    ).toBe(false)
-    expect(
-      defaultGraph.edges.some(
-        (edge) => edge.source === 'router' && edge.target === 'rack',
-      ),
-    ).toBe(false)
-
-    for (const selectedId of ['server', 'rack']) {
+  test('shows network containment when an endpoint is selected', () => {
+    for (const selectedId of ['router', 'rack']) {
       const edge = buildUnifiedGraph(model, selectedId).edges.find(
         (candidate) =>
-          candidate.source === 'server' && candidate.target === 'rack',
+          candidate.source === 'router' && candidate.target === 'rack',
       )
       expect(edge).toMatchObject({ dimmed: false })
     }
@@ -472,10 +467,18 @@ describe('buildUnifiedGraph', () => {
 
     expect(
       graph.nodes.filter((node) => !node.dimmed).map((node) => node.id),
-    ).toEqual(['router', 'switch', 'server', 'docker-vm', 'adguard'])
+    ).toEqual(['rack', 'router', 'switch', 'server', 'docker-vm', 'adguard'])
     expect(
       graph.edges.filter((edge) => !edge.dimmed).map((edge) => edge.type),
-    ).toEqual(['network-upstream', 'connected-to', 'runs-on', 'runs-on'])
+    ).toEqual([
+      'contains',
+      'contains',
+      'contains',
+      'network-upstream',
+      'connected-to',
+      'runs-on',
+      'runs-on',
+    ])
     expect(graph.nodes.find((node) => node.id === 'nas')?.dimmed).toBe(true)
     expect(graph.nodes.find((node) => node.id === 'monitoring')?.dimmed).toBe(
       true,
@@ -506,7 +509,7 @@ describe('buildUnifiedGraph', () => {
       graph.nodes.find((node) => node.id === 'docker-vm')?.metadata,
     ).toEqual([
       { label: 'Hostname', value: 'docker-01' },
-      { label: 'IP', value: '192.0.2.20 · VLAN 20' },
+      { label: 'IP', value: '192.0.2.20' },
     ])
     expect(graph.nodes.find((node) => node.id === 'adguard')?.metadata).toEqual(
       [{ label: 'Domains', value: 'adguard.home.example' }],
@@ -525,8 +528,6 @@ describe('buildUnifiedGraph', () => {
       buildUnifiedGraph(withUnassignedNic).nodes.find(
         (node) => node.id === 'server',
       )?.metadata,
-    ).toEqual(
-      expect.arrayContaining([{ label: 'IP', value: '<unset> · VLAN 20' }]),
-    )
+    ).toEqual(expect.arrayContaining([{ label: 'IP', value: '<unset>' }]))
   })
 })
