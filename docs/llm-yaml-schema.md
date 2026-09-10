@@ -72,14 +72,23 @@ addresses:
     vlanId: 20          # optional integer from 1 through 4094
 ```
 
-For **hardware and VMs**, every address object must also include its connected
-network device:
+For **hardware**, every address object must also include its connected network
+device:
 
 ```yaml
 addresses:
   - address: 192.0.2.10 # optional; renders as <unset> when omitted
     networkDevice: switch-main # required; must reference a network device
     vlanId: 20                 # optional
+```
+
+VM address objects may omit `networkDevice` because VM traffic follows its
+host; `vlanId` and `address` remain valid independently:
+
+```yaml
+addresses:
+  - address: 192.0.2.20
+    vlanId: 30
 ```
 
 Use one address object per NIC/IP assignment. A device may have multiple
@@ -100,6 +109,10 @@ networkDevices:
     addresses:
       - address: 192.0.2.1
         vlanId: 10 # optional
+    connections: # optional provider links
+      - target: access-point
+        kind: poe # usb | power | poe
+        label: Powered AP # optional
 ```
 
 `upstream` describes the network tree from a downstream device to its upstream
@@ -124,9 +137,9 @@ hardware:
     specs: # optional string-to-string map
       cpu: 8 cores
       memory: 32 GiB
-    connections: # optional physical links to other hardware
+    connections: # optional links to hardware/network devices
       - target: ups
-        kind: usb # usb | power
+        kind: usb # usb | power | poe
         label: UPS monitoring # optional
 ```
 
@@ -134,8 +147,11 @@ For `kind: personal-device`, `deviceType` is optional and may be `phone`,
 `tablet`, `laptop`, `desktop`, `wearable`, or `other`.
 
 Only `kind: compute` with `capabilities: [virtualisation]` may host VMs.
-Hardware need not have addresses or a group. A physical connection cannot
-target itself or duplicate the same `kind` for the same pair.
+Hardware need not have addresses or a group. USB connections must join two
+hardware entities. Power and PoE are directional provider-to-consumer links;
+a PoE provider must be a network device. A connection cannot target itself or
+duplicate the same provider, consumer, and kind. Physical links are shown when
+either endpoint is selected.
 
 ## Virtual machines
 
