@@ -225,6 +225,41 @@ describe('topologyLayoutGraph', () => {
     ).toBe(false)
   })
 
+  test('keeps a consistent gap between consecutive topology bands', () => {
+    const graphWithApplication = {
+      ...graph,
+      nodes: [
+        ...graph.nodes,
+        { ...graph.nodes[0]!, id: 'app', band: 'Applications' as const },
+      ],
+    }
+    const layout = layoutPrimaryTopology(graphWithApplication, dimensions)
+    const positions = new Map(layout.nodes.map((node) => [node.id, node]))
+    const gapBetween = (before: string, after: string) => {
+      const beforeNodes = graphWithApplication.nodes.filter(
+        (node) => node.band === before,
+      )
+      const afterNodes = graphWithApplication.nodes.filter(
+        (node) => node.band === after,
+      )
+      const bottom = Math.max(
+        ...beforeNodes.map((node) => {
+          const position = positions.get(node.id)!
+          return position.y! + position.height!
+        }),
+      )
+      const top = Math.min(
+        ...afterNodes.map((node) => positions.get(node.id)!.y!),
+      )
+      return top - bottom
+    }
+
+    expect(gapBetween('Locations', 'Network')).toBe(96)
+    expect(gapBetween('Network', 'Hardware')).toBe(96)
+    expect(gapBetween('Hardware', 'Virtualisation')).toBe(96)
+    expect(gapBetween('Virtualisation', 'Applications')).toBe(96)
+  })
+
   test('keeps groups compact and wraps applications below their VM', () => {
     const applicationIds = Array.from(
       { length: 10 },
@@ -281,13 +316,12 @@ describe('topologyLayoutGraph', () => {
         { id: 'home', x: 64, y: 0, width: 216, height: 100 },
         { id: 'router', x: 64, y: 180, width: 216, height: 100 },
       ],
-      720,
       graph,
     )
 
     expect(frames).toEqual([
-      expect.objectContaining({ band: 'Locations', y: -44 }),
-      expect.objectContaining({ band: 'Network', y: 136 }),
+      expect.objectContaining({ band: 'Locations', x: 42, width: 260, y: -44 }),
+      expect.objectContaining({ band: 'Network', x: 42, width: 260, y: 136 }),
     ])
   })
 
@@ -297,7 +331,6 @@ describe('topologyLayoutGraph', () => {
         { id: 'home', x: 64, y: 0, width: 216, height: 100 },
         { id: 'router', x: 64, y: 120, width: 216, height: 100 },
       ],
-      720,
       graph,
     )
 

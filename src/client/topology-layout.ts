@@ -117,15 +117,19 @@ export function layoutPrimaryTopology(
     networkDepth.set(id, depth)
     return depth
   }
-  const maxNetworkDepth = Math.max(
-    0,
+  const networkTop = groupHeight + 96
+  const networkBottom = Math.max(
+    networkTop,
     ...graph.nodes
       .filter((node) => node.band === 'Network')
-      .map((node) => depthFor(node.id)),
+      .map(
+        (node) =>
+          networkTop +
+          depthFor(node.id) * (networkHeight + 64) +
+          (heights.get(node.id) ?? 0),
+      ),
   )
-  const networkTop = groupHeight + 128
-  const hardwareTop =
-    networkTop + (maxNetworkDepth + 1) * (networkHeight + 64) + 96
+  const hardwareTop = networkBottom + 96
   const hardwareHeight = Math.max(
     0,
     ...graph.nodes
@@ -233,16 +237,11 @@ export function layoutPrimaryTopology(
   }
 
   const nodes = graph.nodes.flatMap((node) => positions.get(node.id) ?? [])
-  const width = Math.max(
-    contentWidth,
-    ...nodes.map((node) => (node.x ?? 0) + (node.width ?? 0) + 64),
-  )
-  return { nodes, frames: categoryFrames(nodes, width, graph) }
+  return { nodes, frames: categoryFrames(nodes, graph) }
 }
 
 export function categoryFrames(
   children: readonly LayoutChild[],
-  width: number,
   graph: UnifiedGraph,
 ): TopologyBandFrame[] {
   const bandById = new Map(graph.nodes.map((node) => [node.id, node.band]))
@@ -260,6 +259,11 @@ export function categoryFrames(
     })
   }
 
+  const left = Math.min(...children.map((child) => child.x ?? 0))
+  const right = Math.max(
+    ...children.map((child) => (child.x ?? 0) + (child.width ?? 0)),
+  )
+  const horizontalPadding = 22
   const frames: TopologyBandFrame[] = []
   let previousBottom = Number.NEGATIVE_INFINITY
   for (const band of bands) {
@@ -270,9 +274,9 @@ export function categoryFrames(
     frames.push({
       id: `band:${band}`,
       band,
-      x: 0,
+      x: left - horizontalPadding,
       y,
-      width: Math.max(720, width + 64),
+      width: right - left + horizontalPadding * 2,
       height,
     })
     previousBottom = y + height
