@@ -1021,7 +1021,7 @@ export function App() {
               connections
             </div>
             <ReactFlow
-              className="flow"
+              className={`flow ${theme}`}
               nodes={displayedNodes}
               edges={edges}
               nodeTypes={nodeTypes}
