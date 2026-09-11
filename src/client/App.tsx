@@ -432,6 +432,11 @@ export function App() {
   }, [])
 
   useEffect(() => {
+    document.documentElement.dataset['bsTheme'] = theme
+    document.documentElement.style.colorScheme = theme
+  }, [theme])
+
+  useEffect(() => {
     if (!sourceOpen) return undefined
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setSourceOpen(false)
