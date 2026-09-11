@@ -70,6 +70,9 @@ test('the bundled example exercises the complete configuration feature set', () 
       addresses: [
         { address: '192.0.2.10', networkDevice: 'switch', vlanId: 10 },
         { address: '192.0.2.12', networkDevice: 'switch', vlanId: 11 },
+        { address: '192.0.2.13', networkDevice: 'switch', vlanId: 12 },
+        { address: '192.0.2.14', networkDevice: 'switch', vlanId: 13 },
+        { address: '192.0.2.15', networkDevice: 'switch', vlanId: 14 },
       ],
     }),
   )

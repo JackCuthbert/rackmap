@@ -111,15 +111,6 @@ const vlanPalette = [
   '#d2759b',
 ]
 
-const groupPalette = [
-  '#b6d7e0',
-  '#d0b8df',
-  '#b6d6b0',
-  '#e0b8a8',
-  '#aebfd8',
-  '#d8c58e',
-]
-
 export function vlanColor(vlan: number): string {
   return vlanPalette[(vlan - 1) % vlanPalette.length]!
 }
@@ -127,7 +118,7 @@ export function vlanColor(vlan: number): string {
 export function groupColor(id: string): string {
   let hash = 0
   for (const character of id) hash = (hash * 31 + character.charCodeAt(0)) >>> 0
-  return groupPalette[hash % groupPalette.length]!
+  return `var(--rackmap-group-color-${hash % 6})`
 }
 
 export function bandFor(entityKind: EntityKind): GraphBand {
@@ -290,10 +281,7 @@ export function edgeRoutePath(
 }
 
 export function nodeMetadata(entity: HomelabEntity): NodeMetadata[] {
-  if (entity.entityKind === 'application')
-    return entity.domains?.length
-      ? [{ label: 'Domains', value: entity.domains.join(', ') }]
-      : []
+  if (entity.entityKind === 'application') return []
 
   if (
     entity.entityKind === 'networkDevice' ||
@@ -301,16 +289,13 @@ export function nodeMetadata(entity: HomelabEntity): NodeMetadata[] {
     entity.entityKind === 'virtualMachine'
   ) {
     return [
-      ...(entity.hostname
-        ? [{ label: 'Hostname' as const, value: entity.hostname }]
-        : []),
-      ...(entity.addresses?.length
+      ...(entity.addresses?.some(({ address, vlanId }) => address || vlanId)
         ? [
             {
               label: 'IP' as const,
               value: entity.addresses
-                .map(({ address }) => address ?? '<unset>')
-                .join(', '),
+                .flatMap(({ address }) => (address ? [address] : []))
+                .join('\n'),
             },
           ]
         : []),

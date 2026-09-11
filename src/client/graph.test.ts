@@ -502,22 +502,18 @@ describe('buildUnifiedGraph', () => {
     const graph = buildUnifiedGraph(model)
 
     expect(graph.nodes.find((node) => node.id === 'router')?.metadata).toEqual([
-      { label: 'Hostname', value: 'router.home.example' },
       { label: 'IP', value: '192.0.2.1' },
     ])
     expect(
       graph.nodes.find((node) => node.id === 'docker-vm')?.metadata,
-    ).toEqual([
-      { label: 'Hostname', value: 'docker-01' },
-      { label: 'IP', value: '192.0.2.20' },
-    ])
+    ).toEqual([{ label: 'IP', value: '192.0.2.20' }])
     expect(graph.nodes.find((node) => node.id === 'adguard')?.metadata).toEqual(
-      [{ label: 'Domains', value: 'adguard.home.example' }],
+      [],
     )
     expect(graph.nodes.find((node) => node.id === 'nas')?.metadata).toEqual([])
   })
 
-  test('renders an unassigned NIC address as unset', () => {
+  test('retains VLAN-only addressing metadata', () => {
     const withUnassignedNic = structuredClone(model)
     const server = withUnassignedNic.entities['server']
     if (!server || server.entityKind !== 'hardware')
@@ -528,6 +524,6 @@ describe('buildUnifiedGraph', () => {
       buildUnifiedGraph(withUnassignedNic).nodes.find(
         (node) => node.id === 'server',
       )?.metadata,
-    ).toEqual(expect.arrayContaining([{ label: 'IP', value: '<unset>' }]))
+    ).toEqual([{ label: 'IP', value: '' }])
   })
 })

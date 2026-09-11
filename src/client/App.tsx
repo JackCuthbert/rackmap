@@ -21,6 +21,15 @@ import {
   type NodeProps,
   type ReactFlowInstance,
 } from '@xyflow/react'
+import {
+  IconCrosshair,
+  IconExternalLink,
+  IconFileCode,
+  IconMoon,
+  IconServer,
+  IconSparkles,
+  IconSun,
+} from '@tabler/icons-react'
 import '@xyflow/react/dist/style.css'
 
 import type {
@@ -43,7 +52,7 @@ import { loadYaml } from './load-yaml'
 import { layoutPrimaryTopology } from './topology-layout'
 
 const nodeWidth = 216
-const baseNodeHeight = 100
+const baseNodeHeight = 68
 
 function relationshipLabel(
   edge: Pick<RelationshipEdge, 'type' | 'kind' | 'label'>,
@@ -80,7 +89,7 @@ function EntityNode({ data }: NodeProps) {
     | undefined
 
   return (
-    <>
+    <div className="vlan-labels">
       {handles.map((handle) => {
         const sameSide = handles
           .filter(
@@ -114,7 +123,7 @@ function EntityNode({ data }: NodeProps) {
           {groupHighlight.name}
         </span>
       )}
-    </>
+    </div>
   )
 }
 
@@ -172,55 +181,89 @@ function entityType(entity: HomelabEntity) {
   return 'kind' in entity ? entity.kind : entity.entityKind
 }
 
-function VlanLabel({ entity }: { entity: HomelabEntity }) {
-  if (
-    entity.entityKind !== 'hardware' &&
-    entity.entityKind !== 'virtualMachine'
-  )
-    return null
-  const vlans = [
-    ...new Set(
-      entity.addresses?.flatMap(({ vlanId }) => (vlanId ? [vlanId] : [])),
-    ),
-  ]
-  if (!vlans.length) return null
-
-  return (
-    <>
-      {vlans.map((vlanId) => (
-        <span
-          className="vlan-label"
-          key={vlanId}
-          style={{ color: vlanColor(vlanId), borderColor: vlanColor(vlanId) }}
-        >
-          VLAN {vlanId}
-        </span>
-      ))}
-    </>
-  )
+function nodeAddresses(entity: HomelabEntity) {
+  return 'addresses' in entity
+    ? (entity.addresses ?? []).filter(
+        ({ address, vlanId }) => address || vlanId,
+      )
+    : []
 }
 
-function NodeMetadataRows({ metadata }: { metadata: NodeMetadata[] }) {
+function NodeMetadataRows({
+  entity,
+  metadata,
+}: {
+  entity: HomelabEntity
+  metadata: NodeMetadata[]
+}) {
   if (!metadata.length) return null
 
   return (
     <div className="node-metadata">
-      {metadata.map(({ label, value }) => (
-        <span key={label} title={`${label}: ${value}`}>
-          <small>{label}</small>
-          <code>{value}</code>
-        </span>
-      ))}
+      {metadata.map(({ label, value }) => {
+        if (label !== 'IP')
+          return (
+            <span key={label} title={`${label}: ${value}`}>
+              {value.split('\n').map((line, index) => (
+                <span className="node-metadata-line" key={`${line}:${index}`}>
+                  {line}
+                </span>
+              ))}
+            </span>
+          )
+
+        const nodeAddressEntries = nodeAddresses(entity)
+        const visibleAddresses = nodeAddressEntries.slice(0, 3)
+        const remaining = nodeAddressEntries.length - visibleAddresses.length
+        return (
+          <div
+            className="node-addresses"
+            key={label}
+            title={`${label}: ${value}`}
+          >
+            {visibleAddresses.map(({ address, vlanId }) => (
+              <div className="node-address" key={`${address}:${vlanId}`}>
+                {vlanId && (
+                  <span
+                    className="vlan-label"
+                    style={{
+                      color: vlanColor(vlanId),
+                      borderColor: vlanColor(vlanId),
+                    }}
+                  >
+                    VLAN {vlanId}
+                  </span>
+                )}
+                {address && (
+                  <span className="node-metadata-line">{address}</span>
+                )}
+              </div>
+            ))}
+            {remaining > 0 && (
+              <span className="node-address-overflow">+{remaining}</span>
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }
 
 function cardHeight(entity: HomelabEntity, metadata: NodeMetadata[]) {
-  const hasVlan =
-    (entity.entityKind === 'hardware' ||
-      entity.entityKind === 'virtualMachine') &&
-    entity.addresses?.some((address) => address.vlanId !== undefined)
-  return baseNodeHeight + metadata.length * 18 + (hasVlan ? 18 : 0)
+  const addressCount = nodeAddresses(entity).length
+  return (
+    baseNodeHeight +
+    metadata.reduce(
+      (height, { label, value }) =>
+        height +
+        (label === 'IP'
+          ? Math.min(addressCount, 3) + (addressCount > 3 ? 1 : 0)
+          : value.split('\n').length) *
+          16 +
+        (label === 'IP' && addressCount > 3 ? 4 : 0),
+      0,
+    )
+  )
 }
 
 function facts(entity: HomelabEntity) {
@@ -228,12 +271,20 @@ function facts(entity: HomelabEntity) {
     ([key, value]) =>
       value !== undefined &&
       key !== 'addresses' &&
+      key !== 'application' &&
+      key !== 'resources' &&
       key !== 'specs' &&
       ![
         'id',
         'name',
         'entityKind',
         'description',
+        'connections',
+        'dependsOn',
+        'group',
+        'parent',
+        'runsOn',
+        'upstream',
         'tags',
         'notes',
         'links',
@@ -256,27 +307,56 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
 
-function AddressList({ value }: { value: unknown }) {
-  if (!Array.isArray(value)) return <dd>{factValue(value)}</dd>
+function AddressList({
+  entity,
+  value,
+}: {
+  entity: HomelabEntity
+  value: unknown
+}) {
+  if (!Array.isArray(value)) return <span>{factValue(value)}</span>
 
   return (
-    <div className="address-list">
+    <div className="d-grid gap-1">
       {value.map((item, index) => {
         const address = isRecord(item) ? item : {}
+        const fields: readonly (readonly [string, unknown])[] = [
+          ['IP address', address['address'] ?? 'Unassigned'],
+          ...(entity.entityKind === 'virtualMachine'
+            ? []
+            : ([
+                ['Network device', address['networkDevice'] ?? 'Not specified'],
+              ] as const)),
+          ['VLAN', address['vlanId'] ?? 'Untagged'],
+        ]
         return (
-          <div className="address-card" key={index}>
-            <strong>Address {index + 1}</strong>
-            <div className="address-card-row">
-              <span>IP address</span>
-              <code>{String(address['address'] ?? 'Unassigned')}</code>
-            </div>
-            <div className="address-card-row">
-              <span>Network device</span>
-              <code>{String(address['networkDevice'] ?? 'Not specified')}</code>
-            </div>
-            <div className="address-card-row">
-              <span>VLAN</span>
-              <code>{String(address['vlanId'] ?? 'Untagged')}</code>
+          <div className="card card-sm" key={index}>
+            <div className="card-body p-2">
+              <div className="row g-1 small">
+                {fields.map(([label, itemValue]) => (
+                  <div className="col-12" key={label}>
+                    <div className="d-flex align-items-baseline justify-content-between gap-2">
+                      <span className="text-secondary">{label}</span>
+                      {label === 'VLAN' &&
+                      typeof address['vlanId'] === 'number' ? (
+                        <span
+                          className="vlan-label"
+                          style={{
+                            color: vlanColor(address['vlanId']),
+                            borderColor: vlanColor(address['vlanId']),
+                          }}
+                        >
+                          VLAN {address['vlanId']}
+                        </span>
+                      ) : (
+                        <code className="font-monospace text-end">
+                          {factValue(itemValue)}
+                        </code>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         )
@@ -293,15 +373,21 @@ function specs(entity: HomelabEntity) {
   return 'specs' in entity ? entity.specs : undefined
 }
 
+function resources(entity: HomelabEntity) {
+  return 'resources' in entity ? entity.resources : undefined
+}
+
 function SpecList({ value }: { value: unknown }) {
-  if (!isRecord(value)) return <dd>{factValue(value)}</dd>
+  if (!isRecord(value)) return <span>{factValue(value)}</span>
 
   return (
-    <div className="spec-list">
+    <div className="datagrid">
       {Object.entries(value).map(([key, item]) => (
-        <div className="spec-row" key={key}>
-          <span>{key}</span>
-          <code>{String(item)}</code>
+        <div className="datagrid-item" key={key}>
+          <div className="datagrid-title">{key}</div>
+          <div className="datagrid-content">
+            <code className="font-monospace">{factValue(item)}</code>
+          </div>
         </div>
       ))}
     </div>
@@ -325,6 +411,11 @@ function diagnosticText(
 }
 
 export function App() {
+  const [theme, setTheme] = useState<'light' | 'dark'>(() =>
+    window.matchMedia('(prefers-color-scheme: dark)').matches
+      ? 'dark'
+      : 'light',
+  )
   const [model, setModel] = useState<HomelabModel>()
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -332,7 +423,24 @@ export function App() {
   const [yaml, setYaml] = useState(exampleYaml)
   const [sourceUrl, setSourceUrl] = useState('')
   const [sourceOpen, setSourceOpen] = useState(false)
+
+  useEffect(() => {
+    const media = window.matchMedia('(prefers-color-scheme: dark)')
+    const updateTheme = () => setTheme(media.matches ? 'dark' : 'light')
+    media.addEventListener('change', updateTheme)
+    return () => media.removeEventListener('change', updateTheme)
+  }, [])
+
+  useEffect(() => {
+    if (!sourceOpen) return undefined
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setSourceOpen(false)
+    }
+    window.addEventListener('keydown', closeOnEscape)
+    return () => window.removeEventListener('keydown', closeOnEscape)
+  }, [sourceOpen])
   const [query, setQuery] = useState('')
+  const [searchFocused, setSearchFocused] = useState(false)
   const [selectedId, setSelectedId] = useState<string>()
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
   const [flow, setFlow] = useState<ReactFlowInstance | null>(null)
@@ -350,6 +458,7 @@ export function App() {
       setError(diagnosticText(result.diagnostics))
     }
     setLoading(false)
+    return result.ok
   }, [])
 
   useEffect(() => {
@@ -369,7 +478,7 @@ export function App() {
         )
       const source = await response.text()
       setYaml(source)
-      renderYaml(source, url.toString())
+      if (renderYaml(source, url.toString())) setSourceOpen(false)
     } catch (reason) {
       setError(
         reason instanceof Error
@@ -591,10 +700,18 @@ export function App() {
             data: {
               label: (
                 <div className="entity-label">
-                  <span className="entity-type">{entityType(entity)}</span>
+                  <span className="entity-type d-inline-flex align-items-center gap-1">
+                    {'derivedFrom' in entity && entity.derivedFrom && (
+                      <IconSparkles
+                        size={11}
+                        stroke={1.75}
+                        aria-hidden="true"
+                      />
+                    )}
+                    {entityType(entity)}
+                  </span>
                   <strong title={entity.name}>{entity.name}</strong>
-                  <VlanLabel entity={entity} />
-                  <NodeMetadataRows metadata={metadata} />
+                  <NodeMetadataRows entity={entity} metadata={metadata} />
                 </div>
               ),
             },
@@ -639,78 +756,125 @@ export function App() {
     : []
 
   return (
-    <main className="app">
-      <header className="app-header">
-        <button
-          className="quiet-button"
-          onClick={() => setSourceOpen((open) => !open)}
-          aria-expanded={sourceOpen}
-          aria-controls="yaml-source"
-        >
-          {sourceOpen ? 'Hide source' : 'Source'}
-        </button>
-        <div className="site-heading">
-          <span className="eyebrow">Rackmap</span>
-          <h1>{model?.site.name ?? 'Rackmap'}</h1>
-        </div>
-        <div className="search-container">
-          <input
-            type="search"
-            aria-label="Search entities"
-            aria-controls={query ? 'search-results' : undefined}
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Escape') setQuery('')
-              if (event.key === 'Enter' && matches[0])
-                selectEntity(matches[0].id)
-            }}
-            placeholder="Search names, IDs, tags…"
-          />
-          {query && (
-            <section
-              id="search-results"
-              className="search-results"
-              aria-label="Search results"
+    <main className="d-flex flex-column vh-100" data-bs-theme={theme}>
+      <header className="navbar">
+        <div className="container-fluid d-flex align-items-center gap-3 px-3">
+          <div className="navbar-brand">
+            <span className="avatar avatar-sm bg-primary-lt" aria-hidden="true">
+              <IconServer size={16} stroke={1.75} />
+            </span>
+            <span>Rackmap</span>
+          </div>
+          <div
+            className="position-relative ms-auto"
+            style={{ width: 'min(360px, 34vw)' }}
+          >
+            <input
+              className="form-control form-control-sm"
+              type="search"
+              aria-label="Search entities"
+              aria-controls={
+                query && searchFocused ? 'search-results' : undefined
+              }
+              aria-expanded={Boolean(query && searchFocused)}
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              onFocus={() => setSearchFocused(true)}
+              onBlur={() => setSearchFocused(false)}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') setQuery('')
+                if (event.key === 'Enter' && matches[0])
+                  selectEntity(matches[0].id)
+              }}
+              placeholder="Search names, IDs, tags…"
+            />
+            {query && searchFocused && (
+              <section
+                id="search-results"
+                className="dropdown-menu dropdown-menu-card show mt-2 w-100 d-flex flex-column"
+                aria-label="Search results"
+                style={{ maxHeight: 'calc(100dvh - 4rem)' }}
+              >
+                <div className="dropdown-header">
+                  {matches.length} matching entities
+                </div>
+                {matches.length ? (
+                  <div className="list-group list-group-flush overflow-auto">
+                    {matches.map((entity) => (
+                      <button
+                        className="list-group-item list-group-item-action d-flex align-items-center justify-content-between gap-3"
+                        key={entity.id}
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => selectEntity(entity.id)}
+                      >
+                        <span className="text-truncate">
+                          <span className="d-block text-body">
+                            {entity.name}
+                          </span>
+                          <span className="d-block text-secondary font-monospace small text-truncate">
+                            {entity.id}
+                          </span>
+                        </span>
+                        <span className="badge bg-secondary-lt text-secondary">
+                          {entityType(entity)}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="empty py-4">
+                    <div className="empty-title">No matching entities</div>
+                    <p className="empty-subtitle text-secondary">
+                      Try another name, ID, or tag.
+                    </p>
+                  </div>
+                )}
+              </section>
+            )}
+          </div>
+          <div className="d-flex align-items-center gap-2">
+            <button
+              className="btn btn-sm btn-icon"
+              onClick={() =>
+                setTheme((current) => (current === 'dark' ? 'light' : 'dark'))
+              }
+              aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+              title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
             >
-              <p className="eyebrow">{matches.length} matching entities</p>
-              {matches.map((entity) => (
-                <button key={entity.id} onClick={() => selectEntity(entity.id)}>
-                  <span>
-                    {entity.name}
-                    <small>{entity.id}</small>
-                  </span>
-                  <span className="entity-type">{entityType(entity)}</span>
-                </button>
-              ))}
-              {!matches.length && (
-                <p className="muted">Try another name, ID, or tag.</p>
+              {theme === 'dark' ? (
+                <IconSun size={16} stroke={1.75} />
+              ) : (
+                <IconMoon size={16} stroke={1.75} />
               )}
-            </section>
-          )}
-        </div>
-        <div className="toolbar-actions">
-          {selected && (
-            <button onClick={() => setSelectedId(undefined)}>
-              Clear selection
             </button>
-          )}
-          <button
-            onClick={() => setLayoutRevision((value) => value + 1)}
-            disabled={!model}
-          >
-            Auto-layout
-          </button>
-          <button
-            onClick={() => void flow?.fitView({ padding: 0.08 })}
-            disabled={!model}
-          >
-            Fit map
-          </button>
+            <button
+              className="btn btn-sm"
+              onClick={() => setSourceOpen(true)}
+              aria-expanded={sourceOpen}
+              aria-controls="yaml-source"
+            >
+              <IconFileCode size={16} stroke={1.75} aria-hidden="true" /> Edit
+              YAML
+            </button>
+            <button
+              className="btn btn-sm"
+              onClick={() => setLayoutRevision((value) => value + 1)}
+              disabled={!model}
+            >
+              Auto-layout
+            </button>
+            <button
+              className="btn btn-sm"
+              onClick={() => void flow?.fitView({ padding: 0.08 })}
+              disabled={!model}
+            >
+              Fit map
+            </button>
+          </div>
         </div>
       </header>
       {(error || layoutError) && (
-        <div className="diagnostics" role="alert">
+        <div className="alert alert-warning rounded-0 mb-0" role="alert">
           <strong>
             {model
               ? 'Map retained · configuration needs attention'
@@ -719,67 +883,122 @@ export function App() {
           <p>{error || layoutError}</p>
         </div>
       )}
-      <div
-        className={`content${sourceOpen ? ' source-open' : ''}${selected ? ' inspector-open' : ''}`}
-      >
+      <div className="graph-shell d-flex flex-fill position-relative overflow-hidden">
         {sourceOpen && (
-          <aside
-            id="yaml-source"
-            className="source-drawer"
-            aria-label="YAML source"
-          >
-            <div className="source-panel-heading">
-              <div>
-                <span className="eyebrow">Configuration source</span>
-                <h2>Paste a combined YAML file</h2>
-              </div>
-              <button
-                className="drawer-close"
-                onClick={() => setSourceOpen(false)}
-                aria-label="Close source editor"
-              >
-                ×
-              </button>
-            </div>
-            <div className="url-loader">
-              <input
-                type="url"
-                value={sourceUrl}
-                onChange={(event) => setSourceUrl(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') void loadUrl()
-                }}
-                placeholder="https://example.com/homelab.yaml"
-                aria-label="YAML URL"
-              />
-              <button
-                onClick={() => void loadUrl()}
-                disabled={loading || !sourceUrl}
-              >
-                Load URL
-              </button>
-              <span className="muted">
-                Single file · URL host must allow CORS
-              </span>
-            </div>
-            <textarea
-              value={yaml}
-              onChange={(event) => setYaml(event.target.value)}
-              spellCheck={false}
-              aria-label="Rackmap YAML"
-            />
-            <button
-              className="render-source"
-              onClick={() => renderYaml(yaml, 'pasted.yaml')}
-              disabled={loading}
+          <>
+            <div
+              className="modal modal-blur fade show"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="yaml-source-title"
+              style={{ display: 'block' }}
+              onClick={() => setSourceOpen(false)}
             >
-              {loading ? 'Rendering…' : 'Render map'}
-            </button>
-          </aside>
+              <div
+                className="modal-dialog modal-lg my-3"
+                style={{ height: 'calc(100dvh - 2rem)' }}
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div
+                  id="yaml-source"
+                  className="modal-content h-100"
+                  aria-label="YAML source"
+                >
+                  <form
+                    className="d-flex flex-column h-100"
+                    onSubmit={(event) => {
+                      event.preventDefault()
+                      if (renderYaml(yaml, 'pasted.yaml')) setSourceOpen(false)
+                    }}
+                  >
+                    <div className="modal-header">
+                      <h2 className="modal-title" id="yaml-source-title">
+                        Edit YAML
+                      </h2>
+                      <button
+                        className="btn-close"
+                        type="button"
+                        onClick={() => setSourceOpen(false)}
+                        aria-label="Close source editor"
+                      />
+                    </div>
+                    <div className="modal-body d-flex flex-column flex-fill overflow-hidden">
+                      <div className="mb-3">
+                        <label className="form-label" htmlFor="yaml-url">
+                          YAML URL
+                        </label>
+                        <div className="input-group mb-2">
+                          <input
+                            className="form-control"
+                            id="yaml-url"
+                            type="url"
+                            value={sourceUrl}
+                            onChange={(event) =>
+                              setSourceUrl(event.target.value)
+                            }
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter') void loadUrl()
+                            }}
+                            placeholder="https://example.com/homelab.yaml"
+                          />
+                          <button
+                            className="btn"
+                            type="button"
+                            onClick={() => void loadUrl()}
+                            disabled={loading || !sourceUrl}
+                          >
+                            Load URL
+                          </button>
+                        </div>
+                        <div className="form-hint">
+                          Single file · URL host must allow CORS
+                        </div>
+                      </div>
+                      <div className="mb-0 d-flex flex-column flex-fill">
+                        <label className="form-label" htmlFor="yaml-editor">
+                          Configuration
+                        </label>
+                        <textarea
+                          className="form-control flex-fill font-monospace"
+                          id="yaml-editor"
+                          value={yaml}
+                          onChange={(event) => setYaml(event.target.value)}
+                          spellCheck={false}
+                        />
+                      </div>
+                    </div>
+                    <div className="modal-footer">
+                      <button
+                        className="btn me-auto"
+                        type="button"
+                        onClick={() => setSourceOpen(false)}
+                      >
+                        Close
+                      </button>
+                      <button
+                        className="btn btn-primary"
+                        type="submit"
+                        disabled={loading}
+                      >
+                        {loading ? 'Rendering…' : 'Render map'}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </div>
+            <div
+              className="modal-backdrop fade show"
+              onClick={() => setSourceOpen(false)}
+            />
+          </>
         )}
-        <section className="canvas" aria-label="Unified infrastructure map">
-          <div className="map-frame">
-            <div className="topology-summary">
+        <section
+          className="flex-fill position-relative overflow-hidden"
+          aria-label="Unified infrastructure map"
+        >
+          <div className="position-relative h-100 w-100">
+            <div className="position-absolute top-0 start-50 translate-middle-x mt-3 badge bg-secondary-lt text-secondary z-1">
               Topology {entities.length} entities · {graph?.edges.length ?? 0}{' '}
               connections
             </div>
@@ -811,7 +1030,7 @@ export function App() {
               }}
             >
               <HandleUpdater nodeIds={routedNodeIds} />
-              <Background color="#313940" gap={24} size={1} />
+              <Background color="var(--tblr-border-color)" gap={24} size={1} />
               <Controls showInteractive={false} />
             </ReactFlow>
             {!model && (
@@ -824,87 +1043,161 @@ export function App() {
           </div>
         </section>
         {selected && (
-          <aside className="details" aria-label="Entity details">
-            <div className="panel-heading">
-              <h2>Inspector</h2>
-              <span className="eyebrow">{entityType(selected)}</span>
+          <aside
+            className="card card-sm position-absolute top-0 bottom-0 end-0 m-3 overflow-auto"
+            style={{ width: 360 }}
+            aria-label="Entity details"
+          >
+            <div
+              className="card-header sticky-top z-1 d-flex align-items-center gap-2 p-3"
+              style={{ backgroundColor: 'var(--tblr-card-bg)' }}
+            >
               <button
-                className="inspector-close"
+                className="btn btn-sm btn-icon"
+                type="button"
+                onClick={() => selectEntity(selected.id)}
+                aria-label={`Focus ${selected.name}`}
+                title="Focus entity"
+              >
+                <IconCrosshair size={16} stroke={1.75} />
+              </button>
+              <h2
+                className="card-title text-truncate mb-0"
+                title={selected.name}
+              >
+                {selected.name}
+              </h2>
+              <button
+                className="btn-close ms-auto"
                 onClick={() => setSelectedId(undefined)}
                 aria-label="Close inspector"
-              >
-                ×
-              </button>
+              />
             </div>
             <>
-              <section className="detail-section entity-heading">
-                <h3>{selected.name}</h3>
-                <code>{selected.id}</code>
-                {selected.description && <p>{selected.description}</p>}
-                {!!selected.tags?.length && (
-                  <div className="tags">
-                    {selected.tags.map((tag) => (
-                      <span key={tag}>{tag}</span>
-                    ))}
+              {(selected.description || selected.tags?.length) && (
+                <section className="card-body flex-grow-0 p-3">
+                  {selected.description && <p>{selected.description}</p>}
+                  {!!selected.tags?.length && (
+                    <>
+                      <h2 className="h3 mb-2">Tags</h2>
+                      <div className="tags">
+                        {selected.tags.map((tag) => (
+                          <span
+                            className="badge bg-secondary-lt text-secondary"
+                            key={tag}
+                          >
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </section>
+              )}
+              <section className="card-body flex-grow-0 p-3">
+                <h2 className="h3 mb-2">Properties</h2>
+                <div className="datagrid small">
+                  <div className="datagrid-item">
+                    <div className="datagrid-title">ID</div>
+                    <div className="datagrid-content">
+                      <code className="font-monospace">{selected.id}</code>
+                    </div>
                   </div>
-                )}
-                <button
-                  className="focus-button"
-                  onClick={() => selectEntity(selected.id)}
-                >
-                  Focus entity
-                </button>
-              </section>
-              <section className="detail-section">
-                <h4>Properties</h4>
-                <dl>
+                  {selected.entityKind === 'virtualMachine' && (
+                    <div className="datagrid-item">
+                      <div className="datagrid-title">Kind</div>
+                      <div className="datagrid-content">
+                        <code className="font-monospace">
+                          {selected.entityKind}
+                        </code>
+                      </div>
+                    </div>
+                  )}
                   {facts(selected).map(([key, value]) => (
-                    <div key={key}>
-                      <dt>{key}</dt>
-                      <dd>{factValue(value)}</dd>
+                    <div className="datagrid-item" key={key}>
+                      <div className="datagrid-title">{key}</div>
+                      <div className="datagrid-content">
+                        <code className="font-monospace">
+                          {factValue(value)}
+                        </code>
+                      </div>
                     </div>
                   ))}
-                </dl>
+                </div>
               </section>
+              {!!resources(selected) && (
+                <section className="card-body flex-grow-0 p-3">
+                  <h2 className="h3 mb-2">Resources</h2>
+                  <div className="small">
+                    <SpecList value={resources(selected)} />
+                  </div>
+                </section>
+              )}
               {!!addresses(selected)?.length && (
-                <section className="detail-section">
-                  <h4>Addresses</h4>
-                  <AddressList value={addresses(selected)} />
+                <section className="card-body flex-grow-0 p-3">
+                  <h2 className="h3 mb-3 d-flex align-items-center justify-content-between">
+                    <span>Addresses</span>
+                    {(addresses(selected)?.length ?? 0) > 1 && (
+                      <span className="badge bg-secondary-lt text-secondary">
+                        {addresses(selected)?.length}
+                      </span>
+                    )}
+                  </h2>
+                  <AddressList entity={selected} value={addresses(selected)} />
                 </section>
               )}
               {!!specs(selected) && (
-                <section className="detail-section">
-                  <h4>Specifications</h4>
-                  <SpecList value={specs(selected)} />
+                <section className="card-body flex-grow-0 p-3">
+                  <h2 className="h3 mb-2">Specifications</h2>
+                  <div className="small">
+                    <SpecList value={specs(selected)} />
+                  </div>
                 </section>
               )}
               {!!links.length && (
-                <section className="detail-section">
-                  <h4>Links & endpoints</h4>
-                  {links.map((link, index) => (
-                    <a
-                      className="external-link"
-                      key={`${link.url}:${index}`}
-                      href={link.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      {link.label}
-                      <span aria-hidden="true">↗</span>
-                    </a>
-                  ))}
+                <section className="card-body flex-grow-0 p-3">
+                  <h2 className="h3 mb-2 d-flex align-items-center justify-content-between">
+                    <span>Links &amp; endpoints</span>
+                    <span className="badge bg-secondary-lt text-secondary">
+                      {links.length}
+                    </span>
+                  </h2>
+                  <div className="list-group">
+                    {links.map((link, index) => (
+                      <a
+                        className="list-group-item list-group-item-action d-flex align-items-center gap-1 px-2 py-1 small"
+                        key={`${link.url}:${index}`}
+                        href={link.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <span className="d-block flex-fill text-truncate">
+                          {link.label}
+                        </span>
+                        <IconExternalLink
+                          className="text-secondary flex-shrink-0"
+                          size={14}
+                          stroke={1.75}
+                          aria-hidden="true"
+                        />
+                      </a>
+                    ))}
+                  </div>
                 </section>
               )}
               {selected.notes && (
-                <section className="detail-section">
+                <section className="card-body flex-grow-0 p-3">
                   <h4>Notes</h4>
                   <p className="notes">{selected.notes}</p>
                 </section>
               )}
-              <section className="detail-section">
-                <h4>
-                  Relationships <span className="count">{related.length}</span>
-                </h4>
+              <section className="card-body flex-grow-0 p-3">
+                <h2 className="h3 mb-3 d-flex align-items-center justify-content-between">
+                  <span>Relationships</span>
+                  <span className="badge bg-secondary-lt text-secondary">
+                    {related.length}
+                  </span>
+                </h2>
                 {(['Depends on', 'Used by', 'Physical'] as const).map(
                   (group) => {
                     const relationships = related.filter((edge) =>
@@ -917,28 +1210,39 @@ export function App() {
                     )
                     return (
                       relationships.length > 0 && (
-                        <div className="relationship-group" key={group}>
-                          <h5>{group}</h5>
-                          {relationships.map((edge, index) => {
-                            const id =
-                              edge.source === selected.id
-                                ? edge.target
-                                : edge.source
-                            return (
-                              <button
-                                key={`${id}:${edge.type}:${index}`}
-                                onClick={() => selectEntity(id)}
-                              >
-                                <span>
-                                  {model?.entities[id]?.name ?? id}
-                                  <small>{id}</small>
-                                </span>
-                                <span className="relationship-type">
-                                  {relationshipLabel(edge)}
-                                </span>
-                              </button>
-                            )
-                          })}
+                        <div className="card card-sm small mb-2" key={group}>
+                          <div className="card-header px-2 py-1">
+                            <small>{group}</small>
+                          </div>
+                          <div className="list-group list-group-flush">
+                            {relationships.map((edge, index) => {
+                              const id =
+                                edge.source === selected.id
+                                  ? edge.target
+                                  : edge.source
+                              return (
+                                <button
+                                  className="list-group-item list-group-item-action d-flex align-items-center justify-content-between gap-2 px-2 py-1"
+                                  key={`${id}:${edge.type}:${index}`}
+                                  onClick={() => selectEntity(id)}
+                                >
+                                  <span className="text-truncate">
+                                    <span className="d-block text-body">
+                                      {model?.entities[id]?.name ?? id}
+                                    </span>
+                                    <span className="d-block small text-secondary font-monospace text-truncate">
+                                      {id}
+                                    </span>
+                                  </span>
+                                  <span>
+                                    <span className="badge bg-secondary-lt text-secondary">
+                                      {relationshipLabel(edge)}
+                                    </span>
+                                  </span>
+                                </button>
+                              )
+                            })}
+                          </div>
                         </div>
                       )
                     )
@@ -951,17 +1255,6 @@ export function App() {
             </>
           </aside>
         )}
-      </div>
-      <div className="app-status" role="status">
-        <span className={`status-dot${error ? ' has-error' : ''}`} />
-        {loading
-          ? 'Loading configuration'
-          : error
-            ? 'Configuration requires attention'
-            : 'Configuration loaded'}
-        <span className="status-note">
-          Read-only · YAML changes reload automatically
-        </span>
       </div>
     </main>
   )

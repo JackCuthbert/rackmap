@@ -82,6 +82,15 @@ hardware:
       - address: 192.0.2.12
         networkDevice: switch
         vlanId: 11
+      - address: 192.0.2.13
+        networkDevice: switch
+        vlanId: 12
+      - address: 192.0.2.14
+        networkDevice: switch
+        vlanId: 13
+      - address: 192.0.2.15
+        networkDevice: switch
+        vlanId: 14
   - id: storage
     name: Storage
     kind: storage
