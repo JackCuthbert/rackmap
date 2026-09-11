@@ -265,7 +265,7 @@ export function categoryFrames(
   for (const band of bands) {
     const bound = bounds.get(band)
     if (!bound) continue
-    const y = Math.max(bound.top - 32, previousBottom)
+    const y = Math.max(bound.top - 44, previousBottom)
     const height = bound.bottom + 32 - y
     frames.push({
       id: `band:${band}`,

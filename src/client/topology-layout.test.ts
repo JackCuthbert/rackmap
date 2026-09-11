@@ -286,8 +286,8 @@ describe('topologyLayoutGraph', () => {
     )
 
     expect(frames).toEqual([
-      expect.objectContaining({ band: 'Locations', y: -32 }),
-      expect.objectContaining({ band: 'Network', y: 148 }),
+      expect.objectContaining({ band: 'Locations', y: -44 }),
+      expect.objectContaining({ band: 'Network', y: 136 }),
     ])
   })
 
