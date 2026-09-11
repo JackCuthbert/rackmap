@@ -184,6 +184,7 @@ export function validateDocuments(load: SuccessfulLoadResult): DomainResult {
         entityKind: 'application',
         kind: 'service',
         runsOn: entity.id,
+        provisioned: entity.provisioned,
         derivedFrom: entity.id,
       },
       file,

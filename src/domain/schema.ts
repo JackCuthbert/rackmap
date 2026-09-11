@@ -10,6 +10,7 @@ const labelledUrlSchema = z.strictObject({
 
 const commonMetadataShape = {
   name: z.string().min(1),
+  provisioned: z.boolean().optional(),
   description: optionalText,
   tags: z.array(z.string().min(1)).optional(),
   notes: optionalText,

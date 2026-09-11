@@ -54,6 +54,10 @@ The map has fixed top-to-bottom bands:
 | `virtualMachines` | `id`, `name`, `runsOn` | `runsOn` → virtualisation-capable compute hardware; optional address objects, `hostname`, `resources`, and `application` |
 | `applications` | `id`, `name`, `kind` (`container`, `service`), `runsOn` | `runsOn` → VM; optional `domains`, `dependsOn`, and labelled HTTP(S) `endpoints` |
 
+Set `provisioned: false` on any graph entity to show it as a planned addition.
+Omitting the field means the entity is already provisioned. Planned nodes retain
+their normal relationships and display an amber **Planned** badge.
+
 Groups and network-device upstream references cannot cycle. VMs must run on
 compute hardware with the `virtualisation` capability. Applications run on
 VMs, never directly on hardware. Application dependencies cannot point at

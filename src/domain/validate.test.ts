@@ -89,6 +89,90 @@ function diagnostics(root: object) {
 }
 
 describe('direct network topology', () => {
+  test('accepts provisioned false for planned graph entities', () => {
+    const result = validateDocuments(
+      loadWith(
+        topology({
+          groups: [
+            { id: 'rack', name: 'Rack', kind: 'rack', provisioned: false },
+          ],
+          networkDevices: [
+            {
+              id: 'router',
+              name: 'Router',
+              kind: 'router',
+              group: 'rack',
+              provisioned: false,
+            },
+          ],
+          hardware: [
+            {
+              id: 'server',
+              name: 'Server',
+              kind: 'compute',
+              capabilities: ['virtualisation'],
+              provisioned: false,
+            },
+          ],
+          virtualMachines: [
+            {
+              id: 'vm',
+              name: 'VM',
+              runsOn: 'server',
+              provisioned: false,
+            },
+          ],
+          applications: [
+            {
+              id: 'app',
+              name: 'App',
+              kind: 'service',
+              runsOn: 'vm',
+              provisioned: false,
+            },
+          ],
+        }),
+      ),
+    )
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(Object.values(result.model.entities)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'rack', provisioned: false }),
+        expect.objectContaining({ id: 'router', provisioned: false }),
+        expect.objectContaining({ id: 'server', provisioned: false }),
+        expect.objectContaining({ id: 'vm', provisioned: false }),
+        expect.objectContaining({ id: 'app', provisioned: false }),
+      ]),
+    )
+  })
+
+  test('carries a planned VM status to its derived application node', () => {
+    const result = validateDocuments(
+      loadWith(
+        topology({
+          virtualMachines: [
+            {
+              id: 'vm',
+              name: 'VM',
+              runsOn: 'server',
+              provisioned: false,
+              application: { name: 'Appliance' },
+            },
+          ],
+          applications: [],
+        }),
+      ),
+    )
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.model.entities['vm:application']).toMatchObject({
+      provisioned: false,
+    })
+  })
+
   test('rejects the removed interfaces and networkLinks collections', () => {
     expect(
       rootDocumentSchema.safeParse(

@@ -66,6 +66,7 @@ export type UnifiedGraphNode = {
   band: GraphBand
   metadata: NodeMetadata[]
   dimmed: boolean
+  planned: boolean
   groupHighlight?: GroupHighlight
 }
 
@@ -416,6 +417,7 @@ export function buildUnifiedGraph(
         band: bandFor(entity.entityKind),
         metadata: nodeMetadata(entity),
         dimmed: selected !== undefined && !connectedIds.has(entity.id),
+        planned: entity.provisioned === false,
         ...(groupHighlight && { groupHighlight }),
       }
     }),

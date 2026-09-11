@@ -83,11 +83,15 @@ body,
 .flow .entity-applications {
   border-top: 3px solid #a4977a;
 }
-.group-badge {
+.node-badges {
   position: absolute;
   top: -9px;
   right: 10px;
+  display: flex;
+  gap: 4px;
   max-width: calc(100% - 20px);
+}
+.group-badge {
   overflow: hidden;
   border: 1px solid currentColor;
   border-radius: 3px;
@@ -96,6 +100,16 @@ body,
   font-size: 9px;
   font-weight: 600;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.planned-badge {
+  border: 1px solid #b76800;
+  border-radius: 3px;
+  background: var(--tblr-bg-surface);
+  color: #b76800;
+  padding: 2px 5px;
+  font-size: 9px;
+  font-weight: 600;
   white-space: nowrap;
 }
 .entity-label {

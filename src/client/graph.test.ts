@@ -395,6 +395,22 @@ describe('buildUnifiedGraph', () => {
     ).toEqual(rack)
   })
 
+  test('marks only provisioned false entities as planned', () => {
+    const plannedModel = structuredClone(model)
+    const server = plannedModel.entities['server']
+    if (!server) throw new Error('Missing server')
+    server.provisioned = false
+
+    const graph = buildUnifiedGraph(plannedModel)
+
+    expect(graph.nodes.find((node) => node.id === 'server')).toMatchObject({
+      planned: true,
+    })
+    expect(graph.nodes.find((node) => node.id === 'router')).toMatchObject({
+      planned: false,
+    })
+  })
+
   test('shows network containment when an endpoint is selected', () => {
     for (const selectedId of ['router', 'rack']) {
       const edge = buildUnifiedGraph(model, selectedId).edges.find(

@@ -49,6 +49,9 @@
             "type": "string",
             "minLength": 1
           },
+          "provisioned": {
+            "type": "boolean"
+          },
           "description": {
             "type": "string",
             "minLength": 1
@@ -119,6 +122,9 @@
           "name": {
             "type": "string",
             "minLength": 1
+          },
+          "provisioned": {
+            "type": "boolean"
           },
           "description": {
             "type": "string",
@@ -264,6 +270,9 @@
           "name": {
             "type": "string",
             "minLength": 1
+          },
+          "provisioned": {
+            "type": "boolean"
           },
           "description": {
             "type": "string",
@@ -432,6 +441,9 @@
             "type": "string",
             "minLength": 1
           },
+          "provisioned": {
+            "type": "boolean"
+          },
           "description": {
             "type": "string",
             "minLength": 1
@@ -505,6 +517,9 @@
               "name": {
                 "type": "string",
                 "minLength": 1
+              },
+              "provisioned": {
+                "type": "boolean"
               },
               "description": {
                 "type": "string",
@@ -616,6 +631,9 @@
           "name": {
             "type": "string",
             "minLength": 1
+          },
+          "provisioned": {
+            "type": "boolean"
           },
           "description": {
             "type": "string",

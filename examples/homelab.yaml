@@ -64,6 +64,11 @@ networkDevices:
     hostname: wifi.example.test
 
 hardware:
+  - id: expansion-server
+    name: Expansion Server
+    kind: compute
+    group: rack
+    provisioned: false
   - id: server
     name: Server
     kind: compute

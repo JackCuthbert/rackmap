@@ -87,6 +87,7 @@ function EntityNode({ data }: NodeProps) {
   const groupHighlight = data['groupHighlight'] as
     | { name: string; color: string }
     | undefined
+  const planned = data['planned'] === true
 
   return (
     <div className="vlan-labels">
@@ -114,13 +115,22 @@ function EntityNode({ data }: NodeProps) {
         )
       })}
       {data['label'] as ReactNode}
-      {groupHighlight && (
-        <span
-          className="group-badge"
-          style={{ color: groupHighlight.color }}
-          title={`Group: ${groupHighlight.name}`}
-        >
-          {groupHighlight.name}
+      {(groupHighlight || planned) && (
+        <span className="node-badges">
+          {groupHighlight && (
+            <span
+              className="group-badge"
+              style={{ color: groupHighlight.color }}
+              title={`Group: ${groupHighlight.name}`}
+            >
+              {groupHighlight.name}
+            </span>
+          )}
+          {planned && (
+            <span className="planned-badge" title="Planned addition">
+              Planned
+            </span>
+          )}
         </span>
       )}
     </div>
@@ -646,6 +656,7 @@ export function App() {
               ...node.data,
               handles: routed.handles.byNode.get(node.id) ?? [],
               groupHighlight: byId.get(node.id)?.groupHighlight,
+              planned: byId.get(node.id)?.planned,
             },
             selected: node.id === selectedId,
             className: `entity-node entity-${byId.get(node.id)?.band.toLowerCase()}${
@@ -696,13 +707,14 @@ export function App() {
             zIndex: -1,
           })
         }
-        for (const { id, entity, metadata } of baseGraph.nodes) {
+        for (const { id, entity, metadata, planned } of baseGraph.nodes) {
           const position = positions.get(id)
           nextNodes.push({
             id,
             type: 'entity',
             ariaLabel: `${entity.name}, ${entityType(entity)}`,
             data: {
+              planned,
               label: (
                 <div className="entity-label">
                   <span className="entity-type d-inline-flex align-items-center gap-1">
