@@ -227,6 +227,8 @@ function facts(entity: HomelabEntity) {
   return Object.entries(entity).filter(
     ([key, value]) =>
       value !== undefined &&
+      key !== 'addresses' &&
+      key !== 'specs' &&
       ![
         'id',
         'name',
@@ -248,6 +250,62 @@ function factValue(value: unknown): string {
       .join(' · ')
   }
   return String(value)
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+function AddressList({ value }: { value: unknown }) {
+  if (!Array.isArray(value)) return <dd>{factValue(value)}</dd>
+
+  return (
+    <div className="address-list">
+      {value.map((item, index) => {
+        const address = isRecord(item) ? item : {}
+        return (
+          <div className="address-card" key={index}>
+            <strong>Address {index + 1}</strong>
+            <div className="address-card-row">
+              <span>IP address</span>
+              <code>{String(address['address'] ?? 'Unassigned')}</code>
+            </div>
+            <div className="address-card-row">
+              <span>Network device</span>
+              <code>{String(address['networkDevice'] ?? 'Not specified')}</code>
+            </div>
+            <div className="address-card-row">
+              <span>VLAN</span>
+              <code>{String(address['vlanId'] ?? 'Untagged')}</code>
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function addresses(entity: HomelabEntity) {
+  return 'addresses' in entity ? entity.addresses : undefined
+}
+
+function specs(entity: HomelabEntity) {
+  return 'specs' in entity ? entity.specs : undefined
+}
+
+function SpecList({ value }: { value: unknown }) {
+  if (!isRecord(value)) return <dd>{factValue(value)}</dd>
+
+  return (
+    <div className="spec-list">
+      {Object.entries(value).map(([key, item]) => (
+        <div className="spec-row" key={key}>
+          <span>{key}</span>
+          <code>{String(item)}</code>
+        </div>
+      ))}
+    </div>
+  )
 }
 
 function diagnosticText(
@@ -529,15 +587,12 @@ export function App() {
           nextNodes.push({
             id,
             type: 'entity',
-            ariaLabel: `${entity.name}, ${entityType(entity)}, ${id}`,
+            ariaLabel: `${entity.name}, ${entityType(entity)}`,
             data: {
               label: (
                 <div className="entity-label">
                   <span className="entity-type">{entityType(entity)}</span>
                   <strong title={entity.name}>{entity.name}</strong>
-                  {entity.entityKind !== 'group' && (
-                    <code title={id}>{id}</code>
-                  )}
                   <VlanLabel entity={entity} />
                   <NodeMetadataRows metadata={metadata} />
                 </div>
@@ -811,6 +866,18 @@ export function App() {
                   ))}
                 </dl>
               </section>
+              {!!addresses(selected)?.length && (
+                <section className="detail-section">
+                  <h4>Addresses</h4>
+                  <AddressList value={addresses(selected)} />
+                </section>
+              )}
+              {!!specs(selected) && (
+                <section className="detail-section">
+                  <h4>Specifications</h4>
+                  <SpecList value={specs(selected)} />
+                </section>
+              )}
               {!!links.length && (
                 <section className="detail-section">
                   <h4>Links & endpoints</h4>

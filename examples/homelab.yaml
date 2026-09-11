@@ -1,10 +1,179 @@
 version: 1
 site:
-  id: home
-  name: Home Lab
-  description: A small example configuration. Do not put secrets in YAML.
-imports:
-  - hardware.yaml
-  - network.yaml
-  - compute.yaml
-  - applications.yaml
+  id: sample-site
+  name: Sample Site
+  description: Generic example data demonstrating the Rackmap format.
+imports: []
+
+groups:
+  - id: room
+    name: Equipment Room
+    kind: room
+  - id: rack
+    name: Rack
+    kind: rack
+    parent: room
+  - id: area
+    name: General Area
+    kind: other
+
+networkDevices:
+  - id: internet
+    name: Internet
+    kind: internet
+    group: rack
+  - id: firewall
+    name: Firewall
+    kind: firewall
+    group: rack
+    upstream: internet
+    manufacturer: Example Manufacturer
+    model: Model A
+    specs:
+      throughput: 1 Gbps
+    hostname: firewall.example.test
+    addresses:
+      - address: 192.0.2.1
+  - id: router
+    name: Router
+    kind: router
+    group: rack
+    upstream: firewall
+  - id: switch
+    name: Switch
+    kind: switch
+    group: rack
+    upstream: router
+    hostname: switch.example.test
+    addresses:
+      - address: 192.0.2.2
+    connections:
+      - target: wifi-access-point
+        kind: poe
+        label: PoE
+  - id: network-device
+    name: Network Device
+    kind: other
+    group: rack
+    upstream: switch
+  - id: wifi-access-point
+    name: Wi-Fi Access Point
+    kind: other
+    group: area
+    upstream: switch
+    hostname: wifi.example.test
+
+hardware:
+  - id: server
+    name: Server
+    kind: compute
+    group: rack
+    capabilities: [virtualisation]
+    manufacturer: Example Manufacturer
+    model: Model B
+    specs:
+      cpu: 8 cores
+      memory: 32 GiB
+    hostname: server.example.test
+    addresses:
+      - address: 192.0.2.10
+        networkDevice: switch
+        vlanId: 10
+      - address: 192.0.2.12
+        networkDevice: switch
+        vlanId: 11
+  - id: storage
+    name: Storage
+    kind: storage
+    group: rack
+    addresses:
+      - address: 192.0.2.11
+        networkDevice: switch
+      - networkDevice: switch
+  - id: ups
+    name: UPS
+    kind: ups
+    group: rack
+    connections:
+      - target: server
+        kind: usb
+        label: Monitoring
+      - target: server
+        kind: power
+        label: Power
+  - id: sensor
+    name: Sensor
+    kind: iot
+    group: area
+    addresses:
+      - networkDevice: wifi-access-point
+        vlanId: 30
+  - id: equipment
+    name: Equipment
+    kind: other
+    group: rack
+  - id: phone
+    name: Phone
+    kind: personal-device
+    deviceType: phone
+    group: area
+    addresses:
+      - networkDevice: wifi-access-point
+  - id: laptop
+    name: Laptop
+    kind: personal-device
+    deviceType: laptop
+    group: area
+    addresses:
+      - networkDevice: wifi-access-point
+
+virtualMachines:
+  - id: application-vm
+    name: Application VM
+    description: Example virtual machine with an appliance application.
+    tags: [sample]
+    notes: Resource values are descriptive strings.
+    links:
+      - label: VM documentation
+        url: https://example.com/vm
+    runsOn: server
+    hostname: application-vm.example.test
+    addresses:
+      - address: 192.0.2.20
+        networkDevice: switch
+        vlanId: 20
+      - address: 2001:db8::20
+    resources:
+      cpu: 4 cores
+      memory: 8 GiB
+      storage: 64 GiB
+    application:
+      name: Appliance Application
+      description: Application derived from the VM definition.
+      tags: [appliance]
+      notes: This becomes a generated application node.
+      links:
+        - label: Application documentation
+          url: https://example.com/application
+      domains: [appliance.example.test]
+      endpoints:
+        - label: Open application
+          url: https://appliance.example.test
+  - id: services-vm
+    name: Services VM
+    runsOn: server
+
+applications:
+  - id: web-application
+    name: Web Application
+    kind: container
+    runsOn: services-vm
+    domains: [web.example.test]
+    endpoints:
+      - label: Open web application
+        url: https://web.example.test
+  - id: background-service
+    name: Background Service
+    kind: service
+    runsOn: services-vm
+    dependsOn: [web-application]
