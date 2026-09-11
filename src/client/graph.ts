@@ -111,6 +111,15 @@ const vlanPalette = [
   '#d2759b',
 ]
 
+const groupPalette = [
+  '#b6d7e0',
+  '#d0b8df',
+  '#b6d6b0',
+  '#e0b8a8',
+  '#aebfd8',
+  '#d8c58e',
+]
+
 export function vlanColor(vlan: number): string {
   return vlanPalette[(vlan - 1) % vlanPalette.length]!
 }
@@ -118,7 +127,7 @@ export function vlanColor(vlan: number): string {
 export function groupColor(id: string): string {
   let hash = 0
   for (const character of id) hash = (hash * 31 + character.charCodeAt(0)) >>> 0
-  return vlanPalette[hash % vlanPalette.length]!
+  return groupPalette[hash % groupPalette.length]!
 }
 
 export function bandFor(entityKind: EntityKind): GraphBand {

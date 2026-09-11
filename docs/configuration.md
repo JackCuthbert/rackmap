@@ -9,11 +9,7 @@ read-only model.
 > YAML, including `notes`, `links`, `endpoints`, and `specs`.
 
 The generated [JSON Schema](../schema/homelab.schema.json) defines the
-structural shape. Regenerate it after schema changes:
-
-```sh
-mise exec -- bun run schema:generate
-```
+structural shape.
 
 ## Root and imports
 
@@ -197,16 +193,11 @@ positions are browser-only and auto-layout resets them.
 Run the development server against a root file for source-aware diagnostics:
 
 ```sh
-mise exec -- bun run dev -- path/to/homelab.yaml
+mise install
+bun install
+bun run dev -- path/to/homelab.yaml
 ```
 
-Run the normal checks before sharing a configuration or schema change:
-
-```sh
-mise exec -- bun run schema:generate
-mise exec -- bun run fmt:check
-mise exec -- bun run lint
-mise exec -- bun run typecheck
-mise exec -- bun test
-mise exec -- bun run build
-```
+Mise automatically activates the repository's configured tool versions;
+`mise exec --` is not required. Contributor checks and schema-generation
+instructions are in [CONTRIBUTING.md](../CONTRIBUTING.md).

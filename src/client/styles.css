@@ -644,6 +644,54 @@ dd {
   margin: 0;
   overflow-wrap: anywhere;
 }
+.address-list {
+  display: grid;
+  gap: 9px;
+}
+.address-card {
+  display: grid;
+  gap: 5px;
+  padding: 9px 10px;
+  border: 1px solid #3a4651;
+  border-radius: 4px;
+  background: #202a33;
+}
+.address-card > strong {
+  color: #d4dee6;
+  font-size: 11px;
+  font-weight: 600;
+}
+.address-card-row {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 8px;
+  font-size: 11px;
+  line-height: 1.45;
+}
+.address-card-row > span {
+  color: var(--muted);
+}
+.address-card-row code {
+  overflow-wrap: anywhere;
+}
+.spec-list {
+  margin: 0;
+}
+.spec-row {
+  display: grid;
+  grid-template-columns: 82px minmax(0, 1fr);
+  gap: 12px;
+  padding: 5px 0;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.spec-row > span {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.spec-row code {
+  overflow-wrap: anywhere;
+}
 .external-link {
   display: flex;
   justify-content: space-between;
