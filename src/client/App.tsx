@@ -22,6 +22,7 @@ import {
   type ReactFlowInstance,
 } from '@xyflow/react'
 import {
+  IconAlertTriangle,
   IconCrosshair,
   IconExternalLink,
   IconFileCode,
@@ -1091,6 +1092,22 @@ export function App() {
               />
             </div>
             <>
+              {selected.provisioned === false && (
+                <section className="card-body flex-grow-0 p-3">
+                  <div className="alert alert-warning mb-0" role="alert">
+                    <div className="alert-icon">
+                      <IconAlertTriangle aria-hidden="true" />
+                    </div>
+                    <div>
+                      <h4 className="alert-heading">Planned addition</h4>
+                      <div className="alert-description">
+                        This item is listed for planning and is not yet
+                        provisioned.
+                      </div>
+                    </div>
+                  </div>
+                </section>
+              )}
               {(selected.description || selected.tags?.length) && (
                 <section className="card-body flex-grow-0 p-3">
                   {selected.description && <p>{selected.description}</p>}
